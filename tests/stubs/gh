@@ -4,8 +4,8 @@ $STUB_GH_STATE and changed by the calls that write, each call recorded in $STUB_
 
 The state: repo ("owner/name"); tokens ({token: the App it acts as, `github-actions` for the job's token}); checks (check
 runs, each with its head_sha and app slug); reviews ({number: [review]}); comments ({id: review comment}); pulls
-({number: pull request}); permissions ({login: permission}); fail ([{method, path, status, times}]: the next calls whose
-path starts so answer that status, 0 for no answer at all); on_create ({before, after: [check runs], rewrite: {..}}: what
+({number: pull request}); permissions ({login: permission}); releases ({tag: GitHub release}); fail ([{method, path, status, times, made}]: the next calls whose
+path starts so answer that status, 0 for no answer at all; with `made` the call is done first, and only its answer lost); on_create ({before, after: [check runs], rewrite: {..}}: what
 other writers do around the next check run created). Its answers and errors are written as gh writes them: the body on
 stdout, and on an error `gh: <message> (HTTP <status>)` on stderr with exit 1."""
 import json
@@ -68,6 +68,13 @@ def route(state: dict, method: str, path: str, body, app: str):
         c = state["comments"].get(rest[2]); return (200, c) if c else (404, "Not Found")
     if method == "GET" and len(rest) == 2 and rest[0] == "pulls":
         p = state["pulls"].get(rest[1]); return (200, p) if p else (404, "Not Found")
+    if method == "GET" and len(rest) == 3 and rest[:2] == ["releases", "tags"]:
+        r = state.setdefault("releases", {}).get(rest[2]); return (200, r) if r else (404, "Not Found")
+    if method == "POST" and rest == ["releases"]:
+        releases = state.setdefault("releases", {})
+        if body["tag_name"] in releases: return 422, "Validation Failed"
+        state["next_id"] = state.get("next_id", 1000) + 1
+        releases[body["tag_name"]] = {**body, "id": state["next_id"]}; return 201, releases[body["tag_name"]]
     if method == "GET" and len(rest) == 3 and rest[0] == "collaborators" and rest[2] == "permission":
         p = state["permissions"].get(urllib.parse.unquote(rest[1]))
         return (200, {"permission": p, "user": {"login": rest[1]}}) if p else (404, "Not Found")
@@ -92,7 +99,10 @@ def main(argv: list) -> int:
     record({"method": method, "path": path, "token": token, "body": body, "paginate": paginate})
     for f in state.get("fail", []):
         if f["method"] == method and path.startswith(f["path"]) and f.get("times", 1) > 0:
-            f["times"] = f.get("times", 1) - 1; save(state); return error(f["status"], "Server Error")
+            f["times"] = f.get("times", 1) - 1
+            if f.get("made") and state["tokens"].get(token) is not None:                  # done, and its answer lost
+                route(state, method, path, body, state["tokens"][token])
+            save(state); return error(f["status"], "Server Error")
     app = state["tokens"].get(token)
     if app is None: return error(401, "Bad credentials")
     status, out = route(state, method, path, body, app); save(state)

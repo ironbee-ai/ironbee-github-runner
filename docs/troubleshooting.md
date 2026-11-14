@@ -67,8 +67,8 @@ A review someone asks for by a command passes every gate but the one for forks.
 - **"The review did not run; the workflow's log says why. A re-run of the workflow, or `@ironbee-ai review`, reviews
   this head."**, from the workflow's third job: the runner's job did not succeed and could not say why itself. The
   image could not be pulled (the registry down, a wrong or deleted `registry-token`), its container did not start, or
-  the job was killed, timed out, or cancelled because more than 100 runs of the pull request were waiting. Check the
-  job's log and the `registry-token` secret, then re-run the workflow.
+  the job was killed, timed out (the runner's job stops after two hours), or cancelled because more than 100 runs of
+  the pull request were waiting. Check the job's log and the `registry-token` secret, then re-run the workflow.
 - **"This run of the workflow lacked the `ironbee-api-key` or `registry-token` secret, so IronBee did not review it.
   GitHub gives a pull request Dependabot opens none of the repository's secrets unless Dependabot is given them."**,
   from the first job: a pull request whose
@@ -118,6 +118,7 @@ and the runner exits with 2. The causes:
 | `aws-region` | missing on `bedrock`, or not a region's name |
 | `model-max-output` | not a whole number of 1 or more |
 | `app-slug` | not the App's: `app-slug acme-review is not this App's: the key is the App acme-reviewer's` |
+| `ironbee-run-reports` | neither `true` nor `false`, in any case; empty is `true` |
 | `self-check` | the reviewer's own check of the run's settings failed before anything was cloned; the line names the reason, such as a model your provider cannot serve |
 
 A missing `ironbee-api-key` or `registry-token`, and your own App's inputs given without the others, are caught before

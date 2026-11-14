@@ -91,10 +91,11 @@ def refusals: {
   "REPOSITORY_REVIEWED_BY_CLOUD": "IronBee's cloud reviews this repository; turn its code review off in the console before the runner reviews it."
 };
 
-# A refused call's answer: {code, sentence}. A code this release does not know is a refusal shown with its own text.
+# A refused call's answer: {code, sentence}, each on one line. A code this release does not know is a refusal shown
+# with its own text.
 def refusal($status):
   (if type == "object" then .error else null end | obj) as $e
-  | (if ($e.code | type) == "string" and ($e.code | length) > 0 then $e.code else "HTTP_\($status)" end) as $code
+  | (if ($e.code | type) == "string" then $e.code | one_line else "" end | if . == "" then "HTTP_\($status)" else . end) as $code
   | ($e.message | one_line | if . == "" then "HTTP \($status)" else . end) as $message
   | ($e.details | obj) as $d
   | {code: $code,
@@ -107,11 +108,11 @@ def refusal($status):
 def no_project_cases: ["project_limit", "project_archived", "name_taken"];
 
 # The registration's answer: {project: {id, created} | null, why: the case that left the repository without one | null,
-# dropped: an unknown case, for the log | null}.
+# dropped: an unknown case, for the log | null}. A project is made now only when `created` is true itself.
 def registered:
   (if (.project | type) == "object" and (.project.id | type) == "string" then
      {id: (.project.id | one_line),
-      created: (.project.created | if . == null or . == false or . == 0 or . == "" or . == [] or . == {} then false else true end)}
+      created: (.project.created == true)}
    else null end) as $p
   | (if $p == null then .noProject else null end) as $why
   | {project: $p,

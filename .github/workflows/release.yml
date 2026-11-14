@@ -1,0 +1,139 @@
+# A release of this repository's reusable workflows: a version and the image it runs, named by the digest of the image's
+# index as the image's publishing printed it. Manual only, from main. Each step is one of scripts/release.sh's:
+#
+#   plan     the tags (the release's own new, a release never below the newest one), the image's index (linux/amd64
+#            and linux/arm64 alone, the version's tag naming it) and its signature: a release's verifies with
+#            ironbee-image-signing.pem or the run stops; a pre-release's may have been signed for IronBee's own tests
+#   image    each platform's image pulled by digest and run with no network on a runner of its own architecture: its
+#            runner reports the version
+#   publish  the push's token checked first; every listed workflow stamped with the digest and the version, committed
+#            on main, tagged v<version>[-rc.<N>], the floating tag moved (v0 for a pre-release, v<MAJOR> for a
+#            release), all pushed at once; then the GitHub release
+#
+# A run whose tag is already pushed with this image and version moves nothing and only makes the GitHub release when it
+# is missing; a tag that names anything else is refused. Every action is pinned by commit. Needs the secrets
+# DOCKERHUB_PULL_TOKEN (a pull-only token of the image's organization on Docker Hub) and GH_ACCESS_TOKEN (a token that
+# may push to this repository, workflow files included: a classic token's scopes must hold `workflow`).
+name: Release
+run-name: Release ${{ inputs.version }}${{ inputs.prerelease != '' && '-' || '' }}${{ inputs.prerelease }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version, MAJOR.MINOR.PATCH: the one the image's runner reports"
+        type: string
+        required: true
+      prerelease:
+        description: "A pre-release, rc.<N>; empty for a release"
+        type: string
+        required: false
+        default: ""
+      image-digest:
+        description: "The image's index digest, sha256:<64 hex>, as its publishing printed it"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# One release at a time: the tags are read, then written.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# The inputs reach the scripts as variables alone, and each step checks them by their form before anything else.
+env:
+  IRONBEE_VERSION: ${{ inputs.version }}
+  IRONBEE_PRERELEASE: ${{ inputs.prerelease }}
+  IRONBEE_IMAGE_DIGEST: ${{ inputs.image-digest }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      signature: ${{ steps.signature.outputs.signature }}
+    steps:
+      - name: Get main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0                                       # every tag, and the commits they name
+          persist-credentials: false
+      - name: The tags
+        run: bash scripts/release.sh plan
+      - name: Log in to Docker Hub
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          username: ironbeeai                                  # an organization access token signs in with the organization's name
+          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+      - name: The image's index
+        run: bash scripts/release.sh index
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+      - name: The image's signature
+        id: signature
+        run: bash scripts/release.sh signature
+
+  image:
+    name: Run the image (${{ matrix.arch }})
+    needs: plan
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Get main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Log in to Docker Hub
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          username: ironbeeai
+          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+      - name: Run the image
+        run: bash scripts/release.sh image "$ARCH"
+        env:
+          ARCH: ${{ matrix.arch }}
+
+  # The one job that writes, with this repository's scripts alone. GitHub refuses a push that changes a file under
+  # .github/workflows/ from the job's own token, which can never hold that right: the commit and the tags are pushed
+  # with GH_ACCESS_TOKEN, used in this job alone. The job's token makes the GitHub release.
+  publish:
+    name: Publish
+    needs: [plan, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Get main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0                                       # every tag: the floating tag is moved from where it is
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          persist-credentials: true                            # for the push
+      - name: The push's token may push a workflow file
+        run: bash scripts/release.sh token
+        env:
+          IRONBEE_PUSH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+      - name: Stamp, commit, tag and push
+        run: bash scripts/release.sh publish
+      - name: The GitHub release
+        run: bash scripts/release.sh github-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IRONBEE_SIGNATURE: ${{ needs.plan.outputs.signature }}

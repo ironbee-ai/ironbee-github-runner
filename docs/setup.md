@@ -89,7 +89,8 @@ The reusable workflow holds four jobs. A register job runs for the last two trig
 a first job without the image decides what the event asks for and ends the workflow when it is nothing for the
 reviewer; a second job runs the image; a third writes a `neutral` check when the second did not succeed. One run of
 the second job runs per pull request at a time: a run that has started is never cancelled, and the runs that wait
-are kept and run in turn, each reading what the one before it wrote.
+are kept and run in turn, each reading what the one before it wrote. A run of the second job is stopped after two
+hours, so one that hangs holds the queue no longer; the third job follows it as any run that did not succeed.
 
 ## Every input and secret
 
@@ -107,6 +108,7 @@ one is optional ([Versions](versions.md)).
 | `aws-region` | the Bedrock region. Required for `bedrock` |
 | `runs-on` | where the jobs run, when not on GitHub's own runners (`ubuntu-latest` when not given): one runner label, or a JSON list of labels in a string such as `'["self-hosted","linux"]'`; a YAML list is refused ([Where the job runs](#where-the-job-runs)) |
 | `ironbee-api-url` | IronBee's API address; empty means the default public API. Only for a regional or test endpoint IronBee gives you |
+| `ironbee-run-reports` | `true` when not given. `false` tells IronBee only that a run started, with nothing of the pull request and no complete, and the console then lists no pull requests or runs for the repository ([What reaches IronBee](what-reaches-ironbee.md#with-run-reports-off)) |
 | `knowledge-repository` | your rules repository, `owner/name` ([Settings and rules](settings-and-rules.md#the-rules-repository)) |
 | `knowledge-ref` | a branch or a tag of the rules repository; its default branch when not given |
 | `ignore-paths` | the paths to ignore, for a repository left without a project in IronBee; one a line |

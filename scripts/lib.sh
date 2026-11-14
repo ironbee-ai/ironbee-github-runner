@@ -13,11 +13,16 @@ trap 'rm -rf "$IRONBEE_TMP"' EXIT
 
 say() { printf '%s\n' "$*"; }
 
-# fail CODE TEXT...: an error annotation, then the exit: 1 a failure, 2 the workflow's configuration.
+# fail CODE TEXT...: an error annotation, then the exit: 1 a failure, 2 the workflow's configuration. The text is
+# escaped as GitHub reads a workflow command's (`%`, CR and LF), so none of it can start a command line of its own.
 fail() {
-  local code=$1
+  local code=$1 text
   shift
-  printf '::error::%s\n' "$(printf '%s' "$*" | sed 's/%/%25/g')"
+  text=$*
+  text=${text//"%"/%25}
+  text=${text//$'\r'/%0D}
+  text=${text//$'\n'/%0A}
+  printf '::error::%s\n' "$text"
   exit "$code"
 }
 
@@ -66,7 +71,8 @@ repository() {
 
 # api [--paginate] METHOD PATH OUT [IN]: one call of GitHub's REST API through gh, as GH_TOKEN; the answer's body in
 # OUT (with --paginate every page's, one after the other) and its HTTP status printed: 200 for any success, 000 when
-# no answer came. No answer, a 429 or a 5xx is tried three times in all. IN is the request's JSON body.
+# no answer came. No answer, a 429 or a 5xx is tried three times in all; a POST only on a 429, since one that got no
+# answer or a 5xx may have made what it asked, which its caller looks for. IN is the request's JSON body.
 api() {
   local page="" method path out in n status=000
   if [ "$1" = --paginate ]; then
@@ -84,6 +90,9 @@ api() {
     status=$(grep -o 'HTTP [0-9][0-9][0-9]' "$IRONBEE_TMP/gh.err" | tail -n 1 | cut -c6-)
     status=${status:-000}
     case $status in 000 | 429 | 5??) ;; *) break ;; esac
+    if [ "$method" = POST ] && [ "$status" != 429 ]; then
+      break
+    fi
   done
   echo "$status"
 }

@@ -92,6 +92,11 @@ on:
         type: string
         required: false
         default: ""
+      ironbee-run-reports:
+        description: "Whether a run reports what it reviewed to IronBee; false sends only that a run started"
+        type: string
+        required: false
+        default: "true"
     secrets:
       # Needed for every review, but not required here: a run GitHub gives no secrets (a Dependabot pull request's) must
       # still reach the decide job, which checks that both are set and otherwise writes the neutral check.
@@ -209,6 +214,8 @@ jobs:
     needs: decide
     if: needs.decide.outputs.action != ''
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    # A hung run holds the pull request's queue no longer than this; the fallback follows it as any failed run.
+    timeout-minutes: 120
     # One run of a pull request at a time: a started run is never cancelled, and every waiting run is kept.
     concurrency:
       group: ironbee-review-${{ needs.decide.outputs.pull-request }}
@@ -241,6 +248,7 @@ jobs:
           IRONBEE_JEV_KEY: ${{ secrets.jev-key }}
           IRONBEE_API_KEY: ${{ secrets.ironbee-api-key }}
           IRONBEE_API_URL: ${{ inputs.ironbee-api-url }}
+          IRONBEE_RUN_REPORTS: ${{ inputs.ironbee-run-reports }}
           IRONBEE_KNOWLEDGE_REPOSITORY: ${{ inputs.knowledge-repository }}
           IRONBEE_KNOWLEDGE_REF: ${{ inputs.knowledge-ref }}
           IRONBEE_KNOWLEDGE_TOKEN: ${{ secrets.knowledge-token }}

@@ -108,6 +108,25 @@ Made at the end of every run that started. The body is checked against its schem
 Fields an action does not have are `null`. The schema is strict: integers, the closed lists above, the run's id, ids
 of the console's rules and memories, and the models' names. A body with anything else is refused whole.
 
+## With run reports off
+
+With the input `ironbee-run-reports: false`, a run's start sends only this, and no complete is sent:
+
+```json
+{ "repository": { "provider": "github", "path": "acme/shop" },
+  "developer": 5550123,
+  "runner": { "version": "1.0.0" },
+  "reports": false }
+```
+
+No pull request number, head, action or trigger, and nothing of how the run ended. IronBee keeps only that a run
+started, to count the month's developers against your licence. The registration is the same. The console shows no
+pull requests or runs for the repository, and says that its reports are off.
+
+Since no run says how it ended, every run that starts counts its pull request's author, including runs that end
+skipped, answers and retracts, which a reported run would not count. Turning reports off can therefore raise the
+month's developer count ([The licence](licence.md#the-developer-limit)).
+
 ## What is never sent
 
 File contents or diffs, file paths, branch names, titles, descriptions, labels, commit messages, logins or names of

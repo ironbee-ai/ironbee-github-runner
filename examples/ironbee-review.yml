@@ -28,6 +28,7 @@ jobs:
       # ignore-paths, target-branches, skip-labels, skip-title-keywords: for a repository without a project
       # app-slug: the slug of your own GitHub App, when the reviewer runs as that App
       # ironbee-api-url: IronBee's API address; the public API when empty
+      # ironbee-run-reports: "false" tells IronBee only that a run started: nothing of the pull request, no complete
     secrets:
       ironbee-api-key: ${{ secrets.IRONBEE_API_KEY }}
       registry-token: ${{ secrets.IRONBEE_REGISTRY_TOKEN }}

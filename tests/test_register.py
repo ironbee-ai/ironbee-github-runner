@@ -68,6 +68,13 @@ class Answers(Register):
         ran, _ = self.register(registered(created=False))
         self.assertIn(f"registered {REPO}: project {PROJECT}, found", ran.out)
 
+    def test_a_project_is_made_now_only_when_created_is_true_itself(self):
+        for created in ("true", 1, "yes", {"x": 1}, [True], None):
+            with self.subTest(created=created):
+                ran, _ = self.register(registered(created=created))
+                self.assertEqual(ran.code, 0, ran.out)
+                self.assertIn(f"registered {REPO}: project {PROJECT}, found", ran.out)
+
     def test_each_case_that_leaves_the_repository_without_a_project(self):
         for case in ("project_limit", "project_archived", "name_taken"):
             with self.subTest(case):
@@ -177,6 +184,16 @@ class Refusals(Register):
     def test_a_percent_sign_is_kept_in_the_annotation(self):
         ran, _ = self.register(refused(403, "SOMETHING_NEW", "100% sure"))
         self.assertIn("100%25 sure", ran.out)
+
+    def test_a_code_is_one_line_and_starts_no_workflow_command(self):
+        for code in ("SOMETHING_NEW\n::warning::injected", "SOMETHING_NEW\r\n::add-mask::x", "SOMETHING_NEW\r::warning::injected"):
+            with self.subTest(code=code):
+                ran, _ = self.register(refused(403, code, "Refused."))
+                self.assertEqual(ran.code, 1)
+                [line] = [line for line in ran.out.splitlines() if line.startswith("::")]
+                self.assertTrue(line.startswith("::error::IronBee refused the registration (SOMETHING_NEW ::"), line)
+        ran, _ = self.register(refused(403, " \n\t", "Refused."))
+        self.assertIn("(HTTP_403): Refused.", ran.out)
 
 
 class Attempts(Register):

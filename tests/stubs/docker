@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""A stand-in for docker in the release's tests: a registry and a daemon held in the JSON file $STUB_DOCKER_STATE, each
+call's arguments recorded in $STUB_DOCKER_CALLS (one JSON list a line). No network, and no image ever runs.
+
+The state: arch (the daemon's architecture); manifests ({image@digest: what `imagetools inspect --raw` prints}); tags
+({image:tag: the digest it names}); images ({image@digest: {os, architecture, version}}: a platform's image, which a
+pull fetches and whose runner reports `version`); pulled (the images pulled so far)."""
+import json
+import os
+import sys
+
+
+def fail(message: str) -> int:
+    sys.stderr.write(message + "\n"); return 1
+
+
+def ref_of(args: list) -> str:
+    """The one argument that is no option and no option's value."""
+    refs = [a for i, a in enumerate(args) if not a.startswith("-") and not (i and args[i - 1] in ("--format", "-f"))]
+    return refs[0]
+
+
+def main(argv: list) -> int:
+    path = os.environ["STUB_DOCKER_STATE"]
+    with open(path) as f: state = json.load(f)
+    with open(os.environ["STUB_DOCKER_CALLS"], "a") as f: f.write(json.dumps(argv) + "\n")
+    if argv[:1] == ["version"]:
+        print(state["arch"]); return 0
+    if argv[:3] == ["buildx", "imagetools", "inspect"]:
+        ref = ref_of(argv[3:])
+        if "--raw" in argv:
+            if ref not in state["manifests"]: return fail(f"ERROR: {ref}: not found")
+            print(json.dumps(state["manifests"][ref])); return 0
+        digest = state["tags"].get(ref) or (ref.split("@", 1)[1] if ref in state["manifests"] else None)
+        if digest is None: return fail(f"ERROR: {ref}: not found")
+        print(json.dumps({"mediaType": "application/vnd.oci.image.index.v1+json", "digest": digest})); return 0
+    if argv[:1] == ["pull"]:
+        ref = argv[-1]
+        if ref not in state["images"]: return fail(f"Error response from daemon: manifest for {ref} not found")
+        state.setdefault("pulled", []).append(ref)
+        with open(path, "w") as f: json.dump(state, f)
+        print(ref); return 0
+    if argv[:2] == ["image", "inspect"]:
+        ref = argv[-1]
+        if ref not in state.get("pulled", []): return fail(f"Error response from daemon: No such image: {ref}")
+        image = state["images"][ref]; print(f"{image['os']}/{image['architecture']}"); return 0
+    if argv[:1] == ["run"]:
+        ref = next(a for a in argv if "@sha256:" in a)
+        if ref not in state.get("pulled", []): return fail(f"docker: Error response from daemon: No such image: {ref}")
+        print(state["images"][ref]["version"]); return 0
+    return fail(f"stub docker: {' '.join(argv[:3])} is not stubbed")
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

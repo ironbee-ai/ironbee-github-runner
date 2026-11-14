@@ -1,6 +1,7 @@
-"""What the scripts' tests share. A script runs with bash as a job runs it, its environment given whole, with two stubs
-first on PATH: `gh` (tests/stubs/gh, a small GitHub of acme/widgets) and `sleep` (records the pause, waits none).
-IronBee's API is a stub on the loopback interface. The events are recorded ones (tests/fixtures/events). No network."""
+"""What the scripts' tests share. A script runs with bash as a job runs it, its environment given whole, with the stubs
+first on PATH: `gh` (tests/stubs/gh, a small GitHub of acme/widgets), `sleep` (records the pause, waits none), and for
+the release `docker` (a registry and a daemon) and `cosign`. IronBee's API is a stub on the loopback interface. The
+events are recorded ones (tests/fixtures/events). No network."""
 from __future__ import annotations
 
 import copy
@@ -79,8 +80,9 @@ class ScriptTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.state = github()
 
-    def run_script(self, script: str, env: dict | None = None, ev: tuple | None = None, args: tuple = ()) -> Ran:
-        """`ev`: (GitHub's event name, its payload), handed over as a job is: GITHUB_EVENT_NAME and the event file."""
+    def run_script(self, script: str, env: dict | None = None, ev: tuple | None = None, args: tuple = (), cwd: Path | None = None) -> Ran:
+        """`ev`: (GitHub's event name, its payload), handed over as a job is: GITHUB_EVENT_NAME and the event file.
+        `cwd`: where the script runs, the test's own directory when not given."""
         files = {k: self.tmp / k for k in ("state.json", "calls.jsonl", "sleeps", "output")}
         files["state.json"].write_text(json.dumps(self.state))
         for k in ("calls.jsonl", "sleeps", "output"): files[k].write_text("")
@@ -91,7 +93,8 @@ class ScriptTest(unittest.TestCase):
             path = self.tmp / "event.json"; path.write_text(json.dumps(ev[1]))
             e.update(GITHUB_EVENT_NAME=ev[0], GITHUB_EVENT_PATH=str(path))
         e.update(env or {})
-        p = subprocess.run(["bash", str(SCRIPTS / script), *args], env={k: v for k, v in e.items() if v is not None}, capture_output=True, text=True, timeout=120)
+        p = subprocess.run(["bash", str(SCRIPTS / script), *args], env={k: v for k, v in e.items() if v is not None}, capture_output=True, text=True, timeout=120,
+                           cwd=cwd or self.tmp)
         outputs = dict(line.split("=", 1) for line in files["output"].read_text().splitlines() if line)
         calls = [json.loads(line) for line in files["calls.jsonl"].read_text().splitlines() if line]
         return Ran(p.returncode, p.stdout, p.stderr, outputs, calls, json.loads(files["state.json"].read_text()), files["sleeps"].read_text().split())
@@ -110,23 +113,27 @@ def changed(payload: dict, **paths) -> dict:
 
 
 class StubApi:
-    """IronBee's API on 127.0.0.1: each request recorded (method, path, headers, body), each answered by the next of
-    `answers` ((status, body): a dict or a list as JSON, a str as it is), the last one again when they run out."""
+    """An API on 127.0.0.1 (IronBee's, or GitHub's for the release): each request recorded (method, path, headers, body),
+    each answered by the next of `answers` ((status, body) or (status, body, headers): a body dict or list as JSON, a
+    str as it is), the last one again when they run out."""
 
     def __init__(self, answers: list):
         self.answers = list(answers); self.requests = []
         api = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None: self.answer()
             def do_PUT(self) -> None: self.answer()
             def do_POST(self) -> None: self.answer()
 
             def answer(self) -> None:
                 size = int(self.headers.get("Content-Length") or 0); raw = self.rfile.read(size)
                 api.requests.append({"method": self.command, "path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": raw.decode()})
-                status, body = api.answers.pop(0) if len(api.answers) > 1 else api.answers[0]
+                status, body, *headers = api.answers.pop(0) if len(api.answers) > 1 else api.answers[0]
                 data = body.encode() if isinstance(body, str) else json.dumps(body).encode()
-                self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+                self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data)))
+                for name, value in (headers[0] if headers else {}).items(): self.send_header(name, value)
+                self.end_headers()
                 self.wfile.write(data)
 
             def log_message(self, *args) -> None: pass

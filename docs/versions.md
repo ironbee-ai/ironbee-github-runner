@@ -1,20 +1,21 @@
 # Versions
 
-The workflow and the image it runs share one version, `MAJOR.MINOR.PATCH`. Your workflow file names an exact release
-(`@v1.0.0`). A release's tag is never moved, and the release names its image by digest. To rely on more than a tag's
-word, pin the workflow's commit in place of the tag, and with it the image:
+The workflow and the image it runs share one version, `MAJOR.MINOR.PATCH`. A release is tagged `v<version>`, and its
+workflow names its image by digest. What follows the `@` in your workflow file's `uses:` picks what you run:
 
-```yaml
-    uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@<commit id of the release>
-```
+| `uses: …/code-review.yml@` | What you run | When it changes |
+|---|---|---|
+| `v1.0.0` | that release | never: a release's tag is never moved |
+| `v1` | the newest release of major version 1 | at each release of 1.x, with nothing to change on your side, since within a major version nothing you set is renamed or removed |
+| `<commit id of a release>` | that release, without relying on a tag's word | never: the commit names the image by digest too |
 
-**Pre-releases.** Tags of the form `v<version>-rc.<N>`, marked as pre-releases on GitHub, are builds under test before
-the release `v<version>`, and are not for production. Their images are verified the same way, by the digest their
-workflow file names ([Verifying the image](verifying-the-image.md)); one that does not verify with the key in this
-repository was signed for IronBee's own tests.
+**Pre-releases.** Tags of the form `v<version>-rc.<N>` are builds for IronBee's own tests before the release
+`v<version>`, marked as pre-releases on GitHub and not for production; `v0` follows the newest of them. Their images
+are verified the same way, by the digest their workflow file names ([Verifying the image](verifying-the-image.md));
+one that does not verify with the key in this repository was signed for IronBee's own tests.
 
-A release stays in your workflow file until you move it. Meanwhile IronBee's side changes, and the release you are on
-keeps working: every change on IronBee's side is tested against each version still served.
+A release named exactly stays in your workflow file until you move it. Meanwhile IronBee's side changes, and the
+release you are on keeps working: every change on IronBee's side is tested against each version still served.
 
 ## What a version's number tells you
 

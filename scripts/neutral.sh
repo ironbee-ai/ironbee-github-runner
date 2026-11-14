@@ -69,11 +69,27 @@ fi
 jq -n --arg name "$IRONBEE_CHECK" --arg head "$head" --arg title "$title" --arg summary "$summary" \
   '{name: $name, head_sha: $head, status: "completed", conclusion: "neutral", output: {title: $title, summary: $summary}}' \
   > "$IRONBEE_TMP/create.json"
-status=$(GH_TOKEN=$write_token api POST "repos/$IRONBEE_REPO/check-runs" "$IRONBEE_TMP/created.json" "$IRONBEE_TMP/create.json")
-[ "$status" = 200 ] || fail 1 "GitHub refused the check on $short (HTTP $status)"
-own=$(jq -r '.id // empty | tostring' "$IRONBEE_TMP/created.json")
-is_number "$own" || fail 1 "GitHub's answer to the check on $short names no check"
-say "check: neutral on $short ($title)"
+# A create answered with a 5xx, or not at all, may still have made the check: ours on the head are listed again, and
+# the create is tried again only when none is there. One found is taken as the check written, for the second look.
+own=""
+for n in 1 2 3; do
+  case $n in 2) sleep 2 ;; 3) sleep 5 ;; esac
+  status=$(GH_TOKEN=$write_token api POST "repos/$IRONBEE_REPO/check-runs" "$IRONBEE_TMP/created.json" "$IRONBEE_TMP/create.json")
+  if [ "$status" = 200 ]; then
+    own=$(jq -r '.id // empty | tostring' "$IRONBEE_TMP/created.json")
+    is_number "$own" || fail 1 "GitHub's answer to the check on $short names no check"
+    say "check: neutral on $short ($title)"
+    break
+  fi
+  case $status in 000 | 5??) ;; *) fail 1 "GitHub refused the check on $short (HTTP $status)" ;; esac
+  ours_checks "$head" "$IRONBEE_TMP/made.json"
+  own=$(jq -r 'max_by(.id) | .id // empty | tostring' "$IRONBEE_TMP/made.json")
+  if [ -n "$own" ]; then
+    say "check: GitHub gave the create on $short no answer (HTTP $status), and a check of ours is there now: taken as written"
+    break
+  fi
+done
+[ -n "$own" ] || fail 1 "GitHub did not make the check on $short (HTTP $status)"
 
 # The second look: a review's conclusion of ours beside this neutral, written while it was being written.
 ours_checks "$head" "$IRONBEE_TMP/again.json"

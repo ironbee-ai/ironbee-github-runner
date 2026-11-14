@@ -84,6 +84,52 @@ class TheRule(Neutral):
         self.assertEqual(ran.code, 1)
         self.assertIn("::error::GitHub refused the check", ran.out)
 
+    def test_a_create_that_made_nothing_is_sent_again_after_a_look(self):
+        for status in (502, 0):
+            with self.subTest(status):
+                self.state["checks"] = []
+                self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": status, "times": 1}]
+                ran = self.neutral()
+                self.assertEqual(ran.code, 0, ran.out + ran.err)
+                self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
+                self.assertEqual([c["method"] for c in ran.calls], ["GET", "GET", "POST", "GET", "POST", "GET"])
+                self.assertEqual(ran.sleeps, ["2"])
+
+    def test_a_create_that_made_the_check_is_not_sent_again(self):
+        self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": 502, "times": 1, "made": True}]
+        ran = self.neutral()
+        self.assertEqual(ran.code, 0, ran.out + ran.err)
+        self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
+        self.assertEqual([w["method"] for w in ran.writes()], ["POST"])
+        self.assertIn("a check of ours is there now: taken as written", ran.out)
+        self.assertEqual(ran.sleeps, [])
+
+    def test_a_reviews_conclusion_found_after_a_failed_create_stays(self):
+        self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": 503, "times": 1, "made": True}]
+        self.state["on_create"] = {"rewrite": {"conclusion": "failure", "output": {"title": "1 blocking", "summary": "s"}}}
+        ran = self.neutral()
+        self.assertEqual(ran.code, 0, ran.out + ran.err)
+        self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["failure"])
+        self.assertEqual([w["method"] for w in ran.writes()], ["POST"])
+        self.assertIn("already says failure", ran.out)
+
+    def test_a_create_never_answered_and_never_made_fails_after_three(self):
+        self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": 0, "times": 3}]
+        ran = self.neutral()
+        self.assertEqual(ran.code, 1)
+        self.assertIn("::error::GitHub did not make the check on 2222222 (HTTP 000)", ran.out)
+        self.assertEqual([w["method"] for w in ran.writes()], ["POST"] * 3)
+        self.assertEqual(ran.sleeps, ["2", "5"])
+        self.assertEqual(self.ours(ran), [])
+
+    def test_a_429_create_is_sent_again(self):
+        self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": 429, "times": 1}]
+        ran = self.neutral()
+        self.assertEqual(ran.code, 0, ran.out + ran.err)
+        self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
+        self.assertEqual([c["method"] for c in ran.calls], ["GET", "GET", "POST", "POST", "GET"])     # no look between: a 429 made nothing
+        self.assertEqual(ran.sleeps, ["2"])
+
     def test_a_listing_that_fails_writes_nothing(self):
         self.state["fail"] = [{"method": "GET", "path": "repos/acme/widgets/commits/", "status": 500, "times": 3}]
         ran = self.neutral()

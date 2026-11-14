@@ -159,8 +159,9 @@ case $event in
     if [ "$(ijq -r 'include "ironbee"; forked' "$IRONBEE_TMP/pull.json")" = true ]; then
       end "#$pr comes from a fork, where no command is obeyed"
     fi
+    # A login is letters, digits and `-`; an Enterprise Managed User's adds `_` and its enterprise's short code.
     login=$(ev '.comment.user.login // ""')
-    case $login in '' | *[!A-Za-z0-9-]*) end "comment $comment names no author GitHub can be asked about" ;; esac
+    case $login in '' | *[!A-Za-z0-9_-]*) end "comment $comment names no author GitHub can be asked about" ;; esac
     status=$(api GET "repos/$IRONBEE_REPO/collaborators/$login/permission" "$IRONBEE_TMP/permission.json")
     case $status in
       200) ;;

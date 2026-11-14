@@ -43,6 +43,10 @@ command asked for both count. A run a gate skipped, one that failed before readi
 not. Bots count nobody. The author is known to IronBee by the numeric GitHub account id alone
 ([What reaches IronBee](what-reaches-ironbee.md#start-post-v1code-review-runs)).
 
+**With run reports off** (`ironbee-run-reports: false`), a run never reports how it ended, so every run that starts
+counts its pull request's author, skipped runs, answers and retracts included. Turning reports off can therefore raise
+the month's count ([What reaches IronBee](what-reaches-ironbee.md#with-run-reports-off)).
+
 **Over the limit, nothing stops.** Reviews go on. While the month's count is above the limit, every run prints one
 warning line in the job's log, and IronBee's team is alerted once that month, so that someone talks to you:
 

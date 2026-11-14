@@ -182,6 +182,17 @@ class IssueComment(Decide):
             with self.subTest(body):
                 self.assertEnds(self.decide("issue_comment", self.says(body)))
 
+    def test_an_enterprise_managed_users_command_is_obeyed(self):
+        self.state["permissions"]["octocat_acme"] = "write"
+        ran = self.decide("issue_comment", self.says("@ironbee-ai review", comment__user__login="octocat_acme", sender__login="octocat_acme"))
+        self.assertEqual(ran.outputs["action"], "respond", ran.out + ran.err)
+        self.assertEqual(ran.calls[-1]["path"], "repos/acme/widgets/collaborators/octocat_acme/permission")
+
+    def test_a_login_no_account_can_have_ends_before_its_permission_is_asked(self):
+        for login in ("a/b", "a.b", "a b", "..", "a%2Fb", "a?b", "ä"):
+            with self.subTest(login):
+                self.assertEnds(self.decide("issue_comment", self.says("@ironbee-ai review", comment__user__login=login)), calls=1)
+
     def test_a_command_from_someone_who_may_not_write_ends(self):
         self.assertEnds(self.decide("issue_comment", self.says("@ironbee-ai review", comment__user__login="reader")), calls=2)
         self.assertEnds(self.decide("issue_comment", self.says("@ironbee-ai review", comment__user__login="stranger")), calls=2)   # GitHub: 404
