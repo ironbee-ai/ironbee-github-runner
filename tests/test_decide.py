@@ -101,7 +101,7 @@ class ReviewComment(Decide):
         self.assertEnds(self.decide("pull_request_review_comment", changed(self.reply, comment__in_reply_to_id=None)))
 
     def test_a_thread_that_is_not_ours_ends(self):
-        roots = {"someone else's, with our marker": {"user": {"login": "ercan", "type": "User"}, "body": marked("mine")},
+        roots = {"someone else's, with our marker": {"user": {"login": "bob", "type": "User"}, "body": marked("mine")},
                  "ours without a marker": {"user": {"login": JOB_LOGIN, "type": "Bot"}, "body": "a workflow's comment"},
                  "ours, the marker only quoted": {"user": {"login": JOB_LOGIN, "type": "Bot"}, "body": "> earlier\n> <!-- ironbee f1 -->\nhello"}}
         for what, root in roots.items():
@@ -120,11 +120,11 @@ class ReviewComment(Decide):
                 self.assertEnds(self.decide("pull_request_review_comment", passer))
 
     def test_the_pull_requests_author_counts_whatever_the_association(self):
-        author = changed(self.reply, comment__author_association="NONE")              # ercan opened #7
+        author = changed(self.reply, comment__author_association="NONE")              # bob opened #7
         self.assertEqual(self.decide("pull_request_review_comment", author).outputs["action"], "answer")
         for association in ("OWNER", "COLLABORATOR"):
             with self.subTest(association):
-                other = changed(self.reply, comment__author_association=association, comment__user__login="meral")
+                other = changed(self.reply, comment__author_association=association, comment__user__login="carol")
                 self.assertEqual(self.decide("pull_request_review_comment", other).outputs["action"], "answer")
 
     def test_a_reply_on_a_forks_pull_request_ends(self):
@@ -151,7 +151,7 @@ class ReviewComment(Decide):
 class IssueComment(Decide):
     def setUp(self) -> None:
         super().setUp()
-        self.comment = event("issue_comment.created")                                   # serkan: "@ironbee-ai full review"
+        self.comment = event("issue_comment.created")                                   # alice: "@ironbee-ai full review"
 
     def says(self, body: str, **paths) -> dict:
         return changed(self.comment, comment__body=body, **paths)
@@ -161,7 +161,7 @@ class IssueComment(Decide):
         self.assertEqual(ran.code, 0, ran.err)
         self.assertEqual(ran.outputs, {"action": "respond", "pull-request": "7", "comment-id": "3101"})
         self.assertEqual([(c["method"], c["path"]) for c in ran.calls],
-                         [("GET", "repos/acme/widgets/pulls/7"), ("GET", "repos/acme/widgets/collaborators/serkan/permission")])
+                         [("GET", "repos/acme/widgets/pulls/7"), ("GET", "repos/acme/widgets/collaborators/alice/permission")])
         self.assertTrue(all(c["token"] == JOB_TOKEN for c in ran.calls))
 
     def test_a_question_is_a_respond(self):
@@ -172,7 +172,7 @@ class IssueComment(Decide):
         self.assertEqual(self.decide("issue_comment", self.says("retract @ironbee-ai")).outputs["action"], "respond")
 
     def test_each_permission_that_pushes_may_command(self):
-        for login in ("serkan", "ercan", "meral"):
+        for login in ("alice", "bob", "carol"):
             with self.subTest(login):
                 ran = self.decide("issue_comment", self.says("@ironbee-ai review", comment__user__login=login, sender__login=login))
                 self.assertEqual(ran.outputs["action"], "respond")

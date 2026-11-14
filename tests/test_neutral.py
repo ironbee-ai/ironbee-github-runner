@@ -72,7 +72,7 @@ class TheRule(Neutral):
 
     def test_reviews_that_are_not_ours_on_the_head_do_not_count(self):
         others = {"on another head": self.review(head="3" * 40), "without our marker": self.review(body="Looks good."),
-                  "someone else's": self.review(login="ercan"), "our marker only quoted": self.review(body="> <!-- ironbee review:widgets__7 -->\nagreed")}
+                  "someone else's": self.review(login="bob"), "our marker only quoted": self.review(body="> <!-- ironbee review:widgets__7 -->\nagreed")}
         for what, review in others.items():
             with self.subTest(what):
                 self.state["checks"] = []; self.state["reviews"]["7"] = [review]

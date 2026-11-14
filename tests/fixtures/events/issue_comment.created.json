@@ -7,12 +7,12 @@
     "number": 7,
     "title": "Validate radius",
     "user": {
-      "login": "ercan",
+      "login": "bob",
       "id": 7001,
       "node_id": "U_kgDO7001",
       "avatar_url": "https://avatars.githubusercontent.com/u/7001?v=4",
-      "url": "https://api.github.com/users/ercan",
-      "html_url": "https://github.com/ercan",
+      "url": "https://api.github.com/users/bob",
+      "html_url": "https://github.com/bob",
       "type": "User",
       "user_view_type": "public",
       "site_admin": false
@@ -39,12 +39,12 @@
     "id": 3101,
     "node_id": "IC_kwDOAAARMc64tXyz",
     "user": {
-      "login": "serkan",
+      "login": "alice",
       "id": 7002,
       "node_id": "U_kgDO7002",
       "avatar_url": "https://avatars.githubusercontent.com/u/7002?v=4",
-      "url": "https://api.github.com/users/serkan",
-      "html_url": "https://github.com/serkan",
+      "url": "https://api.github.com/users/alice",
+      "html_url": "https://github.com/alice",
       "type": "User",
       "user_view_type": "public",
       "site_admin": false
@@ -87,12 +87,12 @@
     "id": 9100
   },
   "sender": {
-    "login": "serkan",
+    "login": "alice",
     "id": 7002,
     "node_id": "U_kgDO7002",
     "avatar_url": "https://avatars.githubusercontent.com/u/7002?v=4",
-    "url": "https://api.github.com/users/serkan",
-    "html_url": "https://github.com/serkan",
+    "url": "https://api.github.com/users/alice",
+    "html_url": "https://github.com/alice",
     "type": "User",
     "user_view_type": "public",
     "site_admin": false

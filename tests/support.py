@@ -44,7 +44,7 @@ def github() -> dict:
     pull = event("pull_request_review_comment.created")["pull_request"]
     return {"repo": REPO, "tokens": {JOB_TOKEN: "github-actions", APP_TOKEN: APP_SLUG, "other-token": "other-app"},
             "checks": [], "reviews": {}, "comments": {}, "pulls": {"7": pull},
-            "permissions": {"serkan": "write", "ercan": "admin", "meral": "maintain", "reader": "read"}, "fail": [], "next_id": 1000}
+            "permissions": {"alice": "write", "bob": "admin", "carol": "maintain", "reader": "read"}, "fail": [], "next_id": 1000}
 
 
 def check(conclusion: str, app: str = "github-actions", head: str = HEAD, name: str = "IronBee review", title: str = "t", summary: str = "s") -> dict:
