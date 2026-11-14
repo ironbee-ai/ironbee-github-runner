@@ -8,6 +8,11 @@ word, pin the workflow's commit in place of the tag, and with it the image:
     uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@<commit id of the release>
 ```
 
+**Pre-releases.** Tags of the form `v<version>-rc.<N>`, marked as pre-releases on GitHub, are builds under test before
+the release `v<version>`, and are not for production. Their images are verified the same way, by the digest their
+workflow file names ([Verifying the image](verifying-the-image.md)); one that does not verify with the key in this
+repository was signed for IronBee's own tests.
+
 A release stays in your workflow file until you move it. Meanwhile IronBee's side changes, and the release you are on
 keeps working: every change on IronBee's side is tested against each version still served.
 
