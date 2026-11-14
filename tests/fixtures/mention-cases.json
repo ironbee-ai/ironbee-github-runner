@@ -1,0 +1,236 @@
+{
+  "description": "Whether a comment addresses us and asks for a retract, the runner's own cases: the mention (or an alias beside it) matches anywhere, ignoring ASCII case only (İ and ı are not i), when the character before it is none of ASCII letters, digits, _, /, - and the one after it none of ASCII letters, digits, _, -. retract is looked for after the FIRST such mention only, ignoring ASCII case, with ASCII word edges.",
+  "cases": [
+    {
+      "body": "@ironbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-ai, please retract!",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@IronBee-AI: RETRACT please",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "Fixed both. @ironbee-ai retract the review",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-ai\nretract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-ai retracted",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-ai retraction",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-ai review",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-ai full review",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": false
+    },
+    {
+      "body": "retract @ironbee-ai",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": false
+    },
+    {
+      "body": "retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-ai-staging retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "me@ironbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "a/@ironbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "ironbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "(@ironbee-ai) retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-ai",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": false
+    },
+    {
+      "body": "",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-development retract",
+      "mention": "@ironbee-development-acme",
+      "mentionAlias": "@ironbee-development",
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@IRONBEE-DEVELOPMENT, please retract!",
+      "mention": "@ironbee-development-acme",
+      "mentionAlias": "@ironbee-development",
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-development-acme retract",
+      "mention": "@ironbee-development-acme",
+      "mentionAlias": "@ironbee-development",
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-development-foo retract",
+      "mention": "@ironbee-development-acme",
+      "mentionAlias": "@ironbee-development",
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-developments retract",
+      "mention": "@ironbee-development-acme",
+      "mentionAlias": "@ironbee-development",
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@İronbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-aı retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-ai retracté",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-ai éretract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-ai 撤回retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "_@ironbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "x-@ironbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-ai_x retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": false,
+      "retract": false
+    },
+    {
+      "body": "@ironbee-ai-staging hi @ironbee-ai retract",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": true
+    },
+    {
+      "body": "@ironbee-ai please RETRACT_ALL",
+      "mention": "@ironbee-ai",
+      "mentionAlias": null,
+      "mentions": true,
+      "retract": false
+    }
+  ]
+}

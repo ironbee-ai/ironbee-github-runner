@@ -1,0 +1,61 @@
+{
+  "action": "checks_requested",
+  "merge_group": {
+    "head_sha": "9999999999999999999999999999999999999999",
+    "head_ref": "refs/heads/gh-readonly-queue/main/pr-7-2222222222222222222222222222222222222222",
+    "base_sha": "0000000000000000000000000000000000000000",
+    "base_ref": "refs/heads/main",
+    "head_commit": {
+      "id": "9999999999999999999999999999999999999999",
+      "tree_id": "8888888888888888888888888888888888888888",
+      "message": "Merge pull request #7 from acme/radius",
+      "timestamp": "2026-11-13T10:00:00Z",
+      "author": {
+        "name": "ercan",
+        "email": "ercan@acme.example"
+      },
+      "committer": {
+        "name": "GitHub",
+        "email": "noreply@github.com"
+      }
+    }
+  },
+  "repository": {
+    "id": 4401,
+    "node_id": "R_kgDOAAARMQ",
+    "name": "widgets",
+    "full_name": "acme/widgets",
+    "private": true,
+    "owner": {
+      "login": "acme",
+      "id": 9100,
+      "node_id": "O_kgDOAAAjjA",
+      "url": "https://api.github.com/users/acme",
+      "html_url": "https://github.com/acme",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/acme/widgets",
+    "description": "Widgets.",
+    "fork": false,
+    "url": "https://api.github.com/repos/acme/widgets",
+    "default_branch": "main",
+    "visibility": "private",
+    "archived": false
+  },
+  "organization": {
+    "login": "acme",
+    "id": 9100
+  },
+  "sender": {
+    "login": "ercan",
+    "id": 7001,
+    "node_id": "U_kgDO7001",
+    "avatar_url": "https://avatars.githubusercontent.com/u/7001?v=4",
+    "url": "https://api.github.com/users/ercan",
+    "html_url": "https://github.com/ercan",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  }
+}

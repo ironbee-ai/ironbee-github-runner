@@ -1,0 +1,43 @@
+{
+  "inputs": null,
+  "ref": "refs/heads/main",
+  "repository": {
+    "id": 4401,
+    "node_id": "R_kgDOAAARMQ",
+    "name": "widgets",
+    "full_name": "acme/widgets",
+    "private": true,
+    "owner": {
+      "login": "acme",
+      "id": 9100,
+      "node_id": "O_kgDOAAAjjA",
+      "url": "https://api.github.com/users/acme",
+      "html_url": "https://github.com/acme",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/acme/widgets",
+    "description": "Widgets.",
+    "fork": false,
+    "url": "https://api.github.com/repos/acme/widgets",
+    "default_branch": "main",
+    "visibility": "private",
+    "archived": false
+  },
+  "organization": {
+    "login": "acme",
+    "id": 9100
+  },
+  "sender": {
+    "login": "ercan",
+    "id": 7001,
+    "node_id": "U_kgDO7001",
+    "avatar_url": "https://avatars.githubusercontent.com/u/7001?v=4",
+    "url": "https://api.github.com/users/ercan",
+    "html_url": "https://github.com/ercan",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "workflow": ".github/workflows/ironbee-review.yml"
+}

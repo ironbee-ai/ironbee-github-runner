@@ -1,0 +1,9 @@
+{
+  "repository": {
+    "provider": "github",
+    "path": "acme/widgets"
+  },
+  "runner": {
+    "version": "1.0.0"
+  }
+}

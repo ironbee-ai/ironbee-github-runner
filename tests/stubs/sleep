@@ -1,0 +1,3 @@
+#!/bin/sh
+# A stand-in for sleep in the scripts' tests: the pause is recorded in $STUB_SLEEP_LOG, never waited.
+printf '%s\n' "$*" >> "${STUB_SLEEP_LOG:-/dev/null}"
