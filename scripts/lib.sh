@@ -1,6 +1,7 @@
 # Shared by the workflow's scripts, sourced and never run: the log, GitHub's API through gh, who we are, and what of
 # ours a commit holds. Needs bash, jq and gh (curl for the registration). Every value of an event or of an answer is
 # read with jq from a file; none is ever evaluated as code.
+# shellcheck disable=SC2034  # the values set here are read by the scripts that source this file
 
 IRONBEE_SCRIPTS=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 IRONBEE_CHECK="IronBee review"                                  # the check's name: the gate a repository requires
@@ -13,16 +14,21 @@ trap 'rm -rf "$IRONBEE_TMP"' EXIT
 
 say() { printf '%s\n' "$*"; }
 
-# fail CODE TEXT...: an error annotation, then the exit: 1 a failure, 2 the workflow's configuration. The text is
-# escaped as GitHub reads a workflow command's (`%`, CR and LF), so none of it can start a command line of its own.
-fail() {
-  local code=$1 text
-  shift
-  text=$*
+# command_text TEXT...: the text escaped as GitHub reads a workflow command's (`%`, CR and LF), so none of it can start
+# a command line of its own.
+command_text() {
+  local text=$*
   text=${text//"%"/%25}
   text=${text//$'\r'/%0D}
   text=${text//$'\n'/%0A}
-  printf '::error::%s\n' "$text"
+  printf '%s' "$text"
+}
+
+# fail CODE TEXT...: an error annotation, then the exit: 1 a failure, 2 the workflow's configuration.
+fail() {
+  local code=$1
+  shift
+  printf '::error::%s\n' "$(command_text "$*")"
   exit "$code"
 }
 
@@ -54,11 +60,11 @@ identity() {
     case $slug in *[!A-Za-z0-9-]*) fail 2 "app-slug is no GitHub App's slug" ;; esac
     slug=$(printf '%s' "$slug" | tr '[:upper:]' '[:lower:]')
     IRONBEE_SLUG=$slug
-    IRONBEE_LOGIN="$slug[bot]"
+    IRONBEE_LOGIN="${slug}[bot]"
     IRONBEE_MENTION="@$slug"
   else
     IRONBEE_SLUG=$IRONBEE_JOB_SLUG
-    IRONBEE_LOGIN="$IRONBEE_JOB_SLUG[bot]"
+    IRONBEE_LOGIN="${IRONBEE_JOB_SLUG}[bot]"
     IRONBEE_MENTION="@$IRONBEE_ALIAS"
   fi
 }

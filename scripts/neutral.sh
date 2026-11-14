@@ -69,8 +69,9 @@ fi
 jq -n --arg name "$IRONBEE_CHECK" --arg head "$head" --arg title "$title" --arg summary "$summary" \
   '{name: $name, head_sha: $head, status: "completed", conclusion: "neutral", output: {title: $title, summary: $summary}}' \
   > "$IRONBEE_TMP/create.json"
-# A create answered with a 5xx, or not at all, may still have made the check: ours on the head are listed again, and
-# the create is tried again only when none is there. One found is taken as the check written, for the second look.
+# A create answered with a 5xx, or not at all, may still have made the check, and one still refused with a 429 after
+# its own tries may get through later: ours on the head are listed again, and the create is tried again only when none
+# is there. One found is taken as the check written, for the second look.
 own=""
 for n in 1 2 3; do
   case $n in 2) sleep 2 ;; 3) sleep 5 ;; esac
@@ -81,7 +82,7 @@ for n in 1 2 3; do
     say "check: neutral on $short ($title)"
     break
   fi
-  case $status in 000 | 5??) ;; *) fail 1 "GitHub refused the check on $short (HTTP $status)" ;; esac
+  case $status in 000 | 429 | 5??) ;; *) fail 1 "GitHub refused the check on $short (HTTP $status)" ;; esac
   ours_checks "$head" "$IRONBEE_TMP/made.json"
   own=$(jq -r 'max_by(.id) | .id // empty | tostring' "$IRONBEE_TMP/made.json")
   if [ -n "$own" ]; then

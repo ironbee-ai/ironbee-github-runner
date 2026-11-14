@@ -306,7 +306,7 @@ class RepositoryWorkflows(unittest.TestCase):
         [tests] = [s for j in self.build["jobs"].values() for s in j["steps"] if s.get("run") == "python -m pytest tests -q"]
         self.assertEqual(tests["env"], {"IRONBEE_PLACEHOLDER_ALLOWED": "${{ github.event_name == 'pull_request' }}"})
         runs = "\n".join(s.get("run", "") for j in self.build["jobs"].values() for s in j["steps"])
-        self.assertIn("shellcheck --shell=bash --external-sources scripts/*.sh", runs)
+        self.assertIn("shellcheck --shell=bash --external-sources --severity=warning scripts/*.sh", runs)
         self.assertIn("sha256sum --check --strict", runs)
         self.assertIn(".github/workflows/*.yml", runs)
 

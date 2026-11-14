@@ -41,7 +41,7 @@ ZEROS=sha256:$(printf '%064d' 0)
 IMAGE_LINE='^([[:space:]]*image:[[:space:]]+)([^@[:space:]]+)@(sha256:[0-9a-f]{64})([[:space:]].*)?$'
 VERSION_LINE='^([[:space:]]*IRONBEE_RUNNER_VERSION:[[:space:]]+)([0-9]+\.[0-9]+\.[0-9]+)([[:space:]].*)?$'
 
-notice() { printf '::notice::%s\n' "$(printf '%s' "$*" | sed 's/%/%25/g')"; }
+notice() { printf '::notice::%s\n' "$(command_text "$*")"; }
 
 # bot ARGS...: git as github-actions[bot], the author, committer and tagger of what a release writes.
 bot() {

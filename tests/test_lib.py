@@ -25,3 +25,10 @@ class Fail(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommandText(unittest.TestCase):
+    def test_percent_cr_and_lf_are_escaped(self):
+        ran = subprocess.run(["bash", "-c", f'. "{SCRIPTS}/lib.sh"; command_text "$1"', "_", "50% done\r\n::add-mask::x\nend"],
+                             capture_output=True, text=True)
+        self.assertEqual(ran.stdout, "50%25 done%0D%0A::add-mask::x%0Aend")

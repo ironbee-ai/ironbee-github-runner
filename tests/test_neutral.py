@@ -130,6 +130,15 @@ class TheRule(Neutral):
         self.assertEqual([c["method"] for c in ran.calls], ["GET", "GET", "POST", "POST", "GET"])     # no look between: a 429 made nothing
         self.assertEqual(ran.sleeps, ["2"])
 
+    def test_a_create_still_refused_with_429_is_tried_again_after_a_look(self):
+        self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": 429, "times": 3}]
+        ran = self.neutral()
+        self.assertEqual(ran.code, 0, ran.out + ran.err)
+        self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
+        methods = [c["method"] for c in ran.calls]
+        self.assertEqual(methods.count("POST"), 4)
+        self.assertEqual(methods[methods.index("POST") + 3], "GET")                                 # ours listed again before the fourth create
+
     def test_a_listing_that_fails_writes_nothing(self):
         self.state["fail"] = [{"method": "GET", "path": "repos/acme/widgets/commits/", "status": 500, "times": 3}]
         ran = self.neutral()

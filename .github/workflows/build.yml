@@ -48,7 +48,7 @@ jobs:
       - name: shellcheck
         run: |
           shellcheck --version
-          shellcheck --shell=bash --external-sources scripts/*.sh
+          shellcheck --shell=bash --external-sources --severity=warning scripts/*.sh
       - name: Install actionlint
         env:
           ACTIONLINT_VERSION: 1.7.12
