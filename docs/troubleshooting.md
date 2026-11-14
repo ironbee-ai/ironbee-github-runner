@@ -6,7 +6,8 @@ Where to look first:
   "Not reviewed", with the reason in one sentence. It is written only on a head that has no check and no review of the
   reviewer's yet, so a conclusion already there is never replaced by it. A run that failed after it began to conclude
   a review, its check's write included, leaves no `neutral` either, so its head can have no check at all: a re-run of
-  the workflow, or `@ironbee-ai review`, concludes it.
+  the workflow, or `@ironbee-ai review`, concludes it. A head that shows only a short review saying that no new change
+  was read there ([The short review](required-check.md#how-it-concludes)) is such a head: its findings hold the merge.
 - **The workflow job's log.** The runner's lines say what it read and decided; a problem starts with `error:`,
   `warning:`, `failed:` or `IronBee`. The runner exits with 0 when the run ended, whatever it found; 1 when it failed;
   2 for a usage or configuration error. A `neutral` check passes a required check, so nothing below holds a merge
@@ -146,9 +147,11 @@ unavailable; the review goes on.
 **The job failed after its review was posted.** The check follows the review at once, so a run killed while it
 summarizes has already concluded. A run killed between its review and its check leaves the head as it was, and
 nothing writes `neutral` over a head that holds a review of the reviewer's: a re-run of the pull request's run, or
-`@ironbee-ai review`, concludes from the texts. A follow-up killed after its replies and before its review counts as
-a round that did not run: the replies stay, the workflow's third job writes `neutral`, and the next run reads them and
-goes on.
+`@ironbee-ai review`, concludes from the texts. A run that read nothing new on its head posts no review of its own
+there; when its check is a `failure`, it posts the short review first
+([The short review](required-check.md#how-it-concludes)), so the same holds for it. A follow-up killed after its
+replies and before its review counts as a round that did not run: the replies stay, the workflow's third job writes
+`neutral`, and the next run reads them and goes on.
 
 ## Warnings in the log
 

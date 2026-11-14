@@ -14,6 +14,7 @@
 | An answer that withdraws a finding | the check follows at once | the check follows at the next review, or when `@ironbee-ai review` restates it |
 | What the check means | the findings nobody who counts has turned down | the same; in either setup of this release it can also be forged by anyone who can push a branch ([what the check is worth](required-check.md#what-the-check-is-worth)) |
 | A gate, or a refused run, on a new head | no status (a gate), or a neutral one | a `neutral` check |
+| A head whose check is a `failure` and that holds no review of the reviewer's (nothing new was read there) | nothing is posted on that head | a short review with no inline comments is posted there first ([The short review](required-check.md#how-it-concludes)) |
 | A bot's push onto a person's pull request | starts nothing; the head has no status | reviewed, when the push raises a workflow run |
 | A push while an older push's review still waits | the reviews are coalesced | the run that starts first reviews the newest head; the other finds nothing new |
 | A pull request closed or merged while its review waited in the queue | the review already queued still publishes | the run ends before it calls IronBee and writes nothing |

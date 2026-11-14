@@ -8,17 +8,25 @@ result is green unless the run itself failed.
 
 | What the run did | The head has no `IronBee review` of the reviewer's | It has one |
 |---|---|---|
-| **reviewed**: a review, or a command that ran one. On a head the last round already read, the review reads nothing again (or only what a partial round left unread) and concludes from the pull request's texts as they are now | created: `failure` when findings at or above the team's `mergeBlock` level are open, else `success` | rewritten the same way |
+| **reviewed**: a review, or a command that ran one. On a head the last round already read, the review reads nothing again (or only what a partial round left unread) and concludes from the pull request's texts as they are now | created: `failure` when findings at or above the team's `mergeBlock` level are open, else `success`; a `failure` on a head that holds no review of the reviewer's gets a short one there first (below) | rewritten the same way, with the same short review first |
 | **a pull request's event that reviewed nothing**: a gate, too large, a release merge already reviewed, refused by IronBee, IronBee unreachable, failed before its review was posted, or no secrets in the run | created: `neutral`, titled "Not reviewed", with the reason in one sentence, when the head is still the event's own and the pull request holds no review of the reviewer's on it. On a head pushed since, nothing: that head's own run decides | left as it is |
 | **a `retract`** | nothing written | a review's conclusion becomes `neutral` ("Retracted"); a `neutral` is left as it is |
 | **an answer**, or a command that asks for no review (a question, `pause`, `resume`) | nothing written | left as it is: the next review restates it (a push, or `@ironbee-ai review`) |
 | **a comment's run that did nothing**: refused, unreachable, not addressed to the reviewer, failed | nothing written | left as it is |
 | **failed after its review was posted** | nothing written: the job is red, and nothing writes `neutral` on a head that holds a review of the reviewer's. A re-run of the head's pull-request run, or `@ironbee-ai review`, concludes from the texts | left as it is until then |
-| **failed after it began to conclude**: the check's own write failing included | nothing written: once a run begins concluding a head, neither it nor the workflow's third job writes `neutral` there, so the head can be left with no check at all. A re-run of the head's pull-request run, or `@ironbee-ai review`, concludes from the texts | left as it is until then |
+| **failed after it began to conclude**: the check's own write failing included | nothing written: once a run begins concluding a head, it writes no `neutral` there, nor does the workflow's third job when it reads the run's output or finds a review of the reviewer's on that head. A `failure` gets the short review first, so the head can be left with no check at all. Only a job killed in the few seconds before that review is posted can still leave a `neutral` there. A re-run of the head's pull-request run, or `@ironbee-ai review`, concludes from the texts | left as it is until then |
 | **a merge queue group** (`merge_group`) | `neutral` on the group's commit: the review was made on the pull request | — |
 
 So a conclusion is only ever a review's, on the head that review read. A comment's run can pass a head only by
 reviewing it, and nothing but a later review of that head, or a retract, turns a `failure` into anything weaker.
+
+**The short review.** A run that reads nothing new on its head (the branch updated from its base, an empty commit)
+posts no review there and restates the check from the texts. When that check is a `failure` and the head holds no
+review of the reviewer's, the reviewer first posts a short review on the head, with no inline comments, saying that
+no new change was read there and how many findings stay open. With that review on the head, nothing writes `neutral`
+there, even when the run is killed before its check: the check stays missing until a re-run or `@ironbee-ai review`.
+A `success` gets no such review. It carries none of the reviewer's state: the next review reads what changed since
+the last head a review read, and a retract takes it back with the rest.
 
 **Which findings block.** Open findings whose severity is at or above the team's `mergeBlock` level (`never` blocks
 nothing). A finding listed in the review's body instead of commented never blocks, nor does an unrated one, a fixed

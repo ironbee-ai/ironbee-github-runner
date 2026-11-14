@@ -60,6 +60,16 @@ class TheRule(Neutral):
         self.assertEqual(ran.writes(), [])
         self.assertIn("holds a review of ours", ran.out)
 
+    def test_a_heads_short_review_of_ours_is_left_as_it_is(self):
+        """The short review the runner posts on a head whose round posted none, before it writes a failure there: ours on
+        that head, so a run killed before its check leaves no neutral, with or without its `concluding` output."""
+        body = marked(f"## IronBee Code Review\n\nNo new change was read on `{HEAD[:7]}`: **2 findings** stay open.", "held:widgets__7")
+        self.state["reviews"]["7"] = [self.review(body=body)]
+        ran = self.neutral()
+        self.assertEqual(ran.code, 0, ran.err)
+        self.assertEqual(ran.writes(), [])
+        self.assertIn("holds a review of ours", ran.out)
+
     def test_reviews_that_are_not_ours_on_the_head_do_not_count(self):
         others = {"on another head": self.review(head="3" * 40), "without our marker": self.review(body="Looks good."),
                   "someone else's": self.review(login="ercan"), "our marker only quoted": self.review(body="> <!-- ironbee review:widgets__7 -->\nagreed")}

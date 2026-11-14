@@ -13,8 +13,9 @@
 #   IRONBEE_REASON               merge_group (a merge queue's group), no_secrets (a run given no secrets), not_run (the
 #                                review did not run: the image, the container, a job killed or cancelled)
 #   IRONBEE_CONCLUDING           the head the review job began to conclude a review on, when it said so before it
-#                                stopped: that head gets no neutral, since a review of it may hold blocking findings
-#                                with no review or check of ours there to show it
+#                                stopped: that head gets no neutral. A failure on a head that holds no review of ours
+#                                gets one from the review job before its check, which the read below finds; this
+#                                covers the moment before that review, and a success
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
