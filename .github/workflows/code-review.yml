@@ -216,9 +216,9 @@ jobs:
       queue: max
     # The release's image, by the digest the release writes here: the version the register job sends.
     container:
-      image: docker.io/ironbee/ironbee-code-review-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      image: docker.io/ironbeeai/ironbee-code-review-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000
       credentials:
-        username: ironbee
+        username: ironbeeai                                  # an organization access token signs in with the organization's name
         password: ${{ secrets.registry-token }}
     # The head the runner began to conclude a review on: from then on no neutral may go there, the fallback's included.
     outputs:
