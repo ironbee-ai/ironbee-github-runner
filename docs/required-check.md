@@ -1,0 +1,75 @@
+# The `IronBee review` check
+
+Each head commit of a pull request gets at most one check run named `IronBee review`, written with the reviewer's
+identity ([Identity](identity.md)). It is the merge gate: you can make it a required check. The workflow job's own
+result is green unless the run itself failed.
+
+## How it concludes
+
+| What the run did | The head has no `IronBee review` of the reviewer's | It has one |
+|---|---|---|
+| **reviewed**: a review, or a command that ran one. On a head the last round already read, the review reads nothing again (or only what a partial round left unread) and concludes from the pull request's texts as they are now | created: `failure` when findings at or above the team's `mergeBlock` level are open, else `success` | rewritten the same way |
+| **a pull request's event that reviewed nothing**: a gate, too large, a release merge already reviewed, refused by IronBee, IronBee unreachable, failed before its review was posted, or no secrets in the run | created: `neutral`, titled "Not reviewed", with the reason in one sentence, when the head is still the event's own and the pull request holds no review of the reviewer's on it. On a head pushed since, nothing: that head's own run decides | left as it is |
+| **a `retract`** | nothing written | a review's conclusion becomes `neutral` ("Retracted"); a `neutral` is left as it is |
+| **an answer**, or a command that asks for no review (a question, `pause`, `resume`) | nothing written | left as it is: the next review restates it (a push, or `@ironbee-ai review`) |
+| **a comment's run that did nothing**: refused, unreachable, not addressed to the reviewer, failed | nothing written | left as it is |
+| **failed after its review was posted** | nothing written: the job is red, and nothing writes `neutral` on a head that holds a review of the reviewer's. A re-run of the head's pull-request run, or `@ironbee-ai review`, concludes from the texts | left as it is until then |
+| **failed after it began to conclude**: the check's own write failing included | nothing written: once a run begins concluding a head, neither it nor the workflow's third job writes `neutral` there, so the head can be left with no check at all. A re-run of the head's pull-request run, or `@ironbee-ai review`, concludes from the texts | left as it is until then |
+| **a merge queue group** (`merge_group`) | `neutral` on the group's commit: the review was made on the pull request | — |
+
+So a conclusion is only ever a review's, on the head that review read. A comment's run can pass a head only by
+reviewing it, and nothing but a later review of that head, or a retract, turns a `failure` into anything weaker.
+
+**Which findings block.** Open findings whose severity is at or above the team's `mergeBlock` level (`never` blocks
+nothing). A finding listed in the review's body instead of commented never blocks, nor does an unrated one, a fixed
+one or a dropped one. The check's title gives the counts (for example `1 blocking · 3 open · 1 high · 2 medium`, or
+`Nothing open`), and its text lists the blocking findings with links to their comments. Those texts are written to
+GitHub, never to IronBee.
+
+**When it follows a change of mind.** An answer that withdraws a finding is in the pull request's texts at once and
+does not move the check by itself; `@ironbee-ai review` restates the check from the texts, with nothing read again. A
+reply that turns a finding down ("won't fix") and a thread someone resolves are recorded by the next review that reads
+the pull request again (a push, or `@ironbee-ai full review`).
+
+In every review the check is written before the summary is made, whether the summary is on or off, so a run killed
+while it summarizes has already concluded.
+
+## Making it required
+
+Add `IronBee review` as a required status check in the branch's protection rule or ruleset.
+
+- **`neutral` passes a required check.** A gate, a licence problem or a run that could not start never blocks a
+  merge. A `failure` an earlier review wrote stays until a later review of that head, a retract, or a push.
+- **Merge queue.** Keep the `merge_group` trigger in the workflow file: the group's commit then gets its `neutral`.
+- **Pull requests from forks get no check:** GitHub gives a fork's pull-request run a read-only token and no secrets,
+  so nothing can be written there. A repository that takes pull requests from forks cannot make the check required in
+  this release.
+- **Dependabot under your own App:** give Dependabot the App's id and key, or its pull requests get no check
+  ([Identity](identity.md#dependabot)).
+- **A pull request with a merge conflict:** GitHub runs no workflow on it, so a push onto it gets no review and no
+  check until the conflict is gone.
+- **A push that raises no workflow event** (one made with a workflow's own token, or whose commit asks to skip CI) gets
+  no run of its own. A run already waiting reviews it, since a run reads the head when it starts; otherwise it has no
+  review and no check until the next push or a command.
+- **A check belongs to a commit.** A head reviewed in one pull request, or against one base, keeps its check in
+  another; a change of the base raises no event the workflow listens to.
+
+## What the check is worth
+
+**What the check says, in IronBee's cloud product and here.** `IronBee review` reflects the findings that nobody who
+counts has turned down. The pull request's author, and anyone else who counts, can close a finding with a reply or a
+thumbs-down; someone who may write to the repository can hide a comment, resolve a thread, `retract`, or `pause` and
+then push. The check is a team's own discipline made visible, not a control over its members: a team that must hold
+merges against its own developers requires a human approval beside it.
+
+**What a self-hosted run adds to that.** The state the reviewer keeps lives in its comments, unsigned, so anyone with
+write access can edit it; in the cloud product it is in IronBee's database. And anyone who can push a branch can
+change the workflow file on that branch, since a pull request's and an inline reply's events run the branch's own
+file, and so read the secrets the job is given; and can add a workflow of their own that writes a check run named
+`IronBee review`, or comments carrying the reviewer's state, as `github-actions[bot]`, which GitHub does not tell from
+the reviewer's. That is GitHub's rule for every workflow secret and every check a workflow writes, not this
+feature's.
+
+Running the reviewer as your own GitHub App takes the check and the comments out of that shared identity; the App's
+key is still a secret a branch's workflow can read. A setup whose check and secrets hold against people who can push
+is not part of this release.
