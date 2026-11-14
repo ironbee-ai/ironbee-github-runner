@@ -310,23 +310,35 @@ class RepositoryWorkflows(unittest.TestCase):
         self.assertIn("sha256sum --check --strict", runs)
         self.assertIn(".github/workflows/*.yml", runs)
 
-    def test_the_release_takes_its_inputs_through_the_environment(self):
+    def test_the_release_takes_its_one_input_through_the_environment(self):
         self.assertEqual(triggers(self.release), {"workflow_dispatch"})
         inputs = self.release["on"]["workflow_dispatch"]["inputs"]
-        self.assertEqual({k: (v["type"], v["required"]) for k, v in inputs.items()},
-                         {"version": ("string", True), "prerelease": ("string", False), "image-digest": ("string", True)})
-        self.assertEqual(self.release["env"], {"IRONBEE_VERSION": "${{ inputs.version }}", "IRONBEE_PRERELEASE": "${{ inputs.prerelease }}",
-                                               "IRONBEE_IMAGE_DIGEST": "${{ inputs.image-digest }}"})
+        self.assertEqual({k: (v["type"], v["required"]) for k, v in inputs.items()}, {"image-tag": ("string", True)})
+        self.assertEqual(self.release["env"], {"IRONBEE_IMAGE_TAG": "${{ inputs.image-tag }}"})
+        self.assertEqual(self.release["run-name"], "Release ${{ inputs.image-tag }}")
         for where, text in strings(self.release["jobs"]):
             self.assertNotIn("inputs.", text, "/".join(where))
 
     def test_the_release_runs_its_script_one_step_at_a_time(self):
         runs = [s["run"] for j in self.release["jobs"].values() for s in j["steps"] if "run" in s]
-        self.assertEqual(runs, ["bash scripts/release.sh plan", "bash scripts/release.sh index", "bash scripts/release.sh signature",
-                                'bash scripts/release.sh image "$ARCH"', "bash scripts/release.sh token", "bash scripts/release.sh publish",
-                                "bash scripts/release.sh github-release"])
+        self.assertEqual(runs, ["bash scripts/release.sh digest", "bash scripts/release.sh plan", "bash scripts/release.sh index",
+                                "bash scripts/release.sh signature", 'bash scripts/release.sh image "$ARCH"', "bash scripts/release.sh token",
+                                "bash scripts/release.sh publish", "bash scripts/release.sh github-release"])
         self.assertEqual(self.release["jobs"]["publish"]["needs"], ["plan", "image"])
         self.assertEqual(self.release["jobs"]["image"]["needs"], "plan")
+
+    def test_the_tag_is_read_once_and_every_later_step_works_by_its_digest(self):
+        plan = self.release["jobs"]["plan"]
+        steps = plan["steps"]
+        i = next(i for i, s in enumerate(steps) if s.get("run") == "bash scripts/release.sh digest")
+        self.assertEqual(steps[i]["id"], "digest")
+        self.assertTrue(any("docker/login-action@" in s.get("uses", "") for s in steps[:i]))         # the tag is read signed in
+        self.assertEqual(plan["outputs"]["digest"], "${{ steps.digest.outputs.digest }}")
+        for s in steps[i + 1:]:
+            if "run" in s: self.assertEqual(s["env"]["IRONBEE_IMAGE_DIGEST"], "${{ steps.digest.outputs.digest }}", s["run"])
+        for name in ("image", "publish"):
+            self.assertEqual(self.release["jobs"][name]["env"], {"IRONBEE_IMAGE_DIGEST": "${{ needs.plan.outputs.digest }}"})
+        self.assertNotIn("IRONBEE_IMAGE_DIGEST", steps[i].get("env", {}))
 
     def test_the_release_writes_from_its_publishing_job_alone(self):
         # The job's token reads, and writes the GitHub release in the publishing job; GH_ACCESS_TOKEN, which may push a

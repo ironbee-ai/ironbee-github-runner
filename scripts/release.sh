@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # A release of this repository's reusable workflows, one step at a time: scripts/release.sh STEP, run from the
-# repository's root by the release workflow (.github/workflows/release.yml). Every step reads the release's inputs from
-# its environment and checks each by its form first; none is ever evaluated as code.
+# repository's root by the release workflow (.github/workflows/release.yml). Every step reads the release's input from
+# its environment and checks it by its form first; nothing is ever evaluated as code.
 #
-#   IRONBEE_VERSION        MAJOR.MINOR.PATCH: the version every listed workflow and its image share
-#   IRONBEE_PRERELEASE     rc.<N> for a pre-release, tagged v<version>-rc.<N>; empty for a release, tagged v<version>
-#   IRONBEE_IMAGE_DIGEST   sha256:<64 hex>: the image's index digest, as the image's publishing printed it
+#   IRONBEE_IMAGE_TAG      the image's tag on Docker Hub: MAJOR.MINOR.PATCH for a release, MAJOR.MINOR.PATCH-rc.<N> for
+#                          a pre-release. The version, the pre-release and the repository's tag v<image tag> come from it
+#   IRONBEE_IMAGE_DIGEST   sha256:<64 hex>: the index digest the digest step read for that tag, by which every later
+#                          step works
 #
 #   workflows        the workflows a release stamps, each with the image it runs
+#   digest           each image's index digest, read once for the tag. GITHUB_OUTPUT gets digest
 #   plan             the release's tag new, or this very release's (a run again after its push); a release never
 #                    below the newest one; no pre-release of a released version; every listed workflow stampable
-#   index            each image's index by digest: linux/amd64 and linux/arm64 alone, and the version's tag naming it
+#   index            each image's index by digest: linux/amd64 and linux/arm64 alone
 #   image ARCH       each image's linux/ARCH image, pulled by digest on a runner of that architecture and run with no
 #                    network: its runner reports the version
 #   signature        each index's signature with the committed public key: a release's must verify, a pre-release's
@@ -27,15 +29,15 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# The reusable workflows a release stamps, `<workflow> <image>` a line, all given the same version. A second line needs
-# a digest of its own, which image-digest cannot give: the inputs refuse it until the release takes one per image.
+# The reusable workflows a release stamps, `<workflow> <image>` a line, all given the same version. A second line's
+# image would be read at the same tag, but the steps carry one digest: the input check refuses a second line until they
+# carry one per image.
 WORKFLOWS='.github/workflows/code-review.yml docker.io/ironbeeai/ironbee-code-review-runner'
 KEY=ironbee-image-signing.pem                                   # IronBee's public key: a release's image verifies with it
 PLATFORMS="linux/amd64 linux/arm64"
 
-SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+IMAGE_TAG='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(rc\.[1-9][0-9]*))?$'
 RELEASE_TAG='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
-RC='^rc\.[1-9][0-9]*$'
 DIGEST='^sha256:[0-9a-f]{64}$'
 ZEROS=sha256:$(printf '%064d' 0)
 IMAGE_LINE='^([[:space:]]*image:[[:space:]]+)([^@[:space:]]+)@(sha256:[0-9a-f]{64})([[:space:]].*)?$'
@@ -56,32 +58,32 @@ tools() {
   done
 }
 
-# The inputs, each by its form, and the names they give: tag (the repository's), image_tag (the image's), floating
-# (v0 follows the pre-releases, v<MAJOR> the releases of that major version).
+# The input by its form, and what comes from it: version (MAJOR.MINOR.PATCH, what the image's runner reports),
+# prerelease (rc.<N>, or empty for a release), tag (the repository's, v<image tag>) and floating (v0 follows the
+# pre-releases, v<MAJOR> the releases of that major version).
 inputs() {
   local lines
-  version=${IRONBEE_VERSION:-}
-  prerelease=${IRONBEE_PRERELEASE:-}
-  digest=${IRONBEE_IMAGE_DIGEST:-}
-  [[ $version =~ $SEMVER ]] || fail 2 "version is not MAJOR.MINOR.PATCH"
+  image_tag=${IRONBEE_IMAGE_TAG:-}
+  [[ $image_tag =~ $IMAGE_TAG ]] || fail 2 "image-tag is not MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-rc.<N>, the image's tag with no v"
   major=${BASH_REMATCH[1]}
-  if [ -n "$prerelease" ] && ! [[ $prerelease =~ $RC ]]; then
-    fail 2 "prerelease is not rc.<N>, N from 1"
-  fi
-  [[ $digest =~ $DIGEST ]] || fail 2 "image-digest is not sha256:<64 hex>"
-  [ "$digest" != "$ZEROS" ] || fail 2 "image-digest is the placeholder of all zeros"
+  version=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}
+  prerelease=${BASH_REMATCH[5]}
+  tag=v$image_tag
   if [ -n "$prerelease" ]; then
-    tag=v$version-$prerelease
-    image_tag=$version-$prerelease
     floating=v0
   else
     [ "$major" != 0 ] || fail 2 "a release of major version 0: v0 is the pre-releases' tag"
-    tag=v$version
-    image_tag=$version
     floating=v$major
   fi
   lines=$(printf '%s\n' "$WORKFLOWS" | grep -c .)
-  [ "$lines" = 1 ] || fail 2 "the release lists $lines workflows, and image-digest names the index of one image"
+  [ "$lines" = 1 ] || fail 2 "the release lists $lines workflows, and its steps carry the digest of one image"
+}
+
+# The index digest the digest step read for the tag: every later step works by it, and never reads the tag again.
+digest_read() {
+  digest=${IRONBEE_IMAGE_DIGEST:-}
+  [[ $digest =~ $DIGEST ]] || fail 2 "IRONBEE_IMAGE_DIGEST is not sha256:<64 hex>: the digest step reads it"
+  [ "$digest" != "$ZEROS" ] || fail 2 "IRONBEE_IMAGE_DIGEST is the placeholder of all zeros"
 }
 
 # newer A B: whether version A is above version B, each MAJOR.MINOR.PATCH with no leading zero.
@@ -198,11 +200,27 @@ step_plan() {
   else
     say "$tag is new${newest:+; the newest release is v$newest}"
   fi
-  say "tag $tag, image tag $image_tag, floating tag $floating"
+  say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag $floating"
+}
+
+# The tag is read here alone. A registry's tag can be moved, so from here on the release names the image by the
+# digest read now; a release's signature then shows that this digest is the image IronBee signed.
+step_digest() {
+  local image named
+  tools docker jq
+  [ -n "${GITHUB_OUTPUT:-}" ] || fail 2 "GITHUB_OUTPUT is not set"
+  while read -r _ image <&3; do
+    docker buildx imagetools inspect "$image:$image_tag" --format '{{json .Manifest}}' > "$IRONBEE_TMP/tagged.json" 2> "$IRONBEE_TMP/docker.err" \
+      || fail 1 "could not read $image:$image_tag: $(tail -n 1 "$IRONBEE_TMP/docker.err")"
+    named=$(jq -r '.digest // empty' "$IRONBEE_TMP/tagged.json" 2> /dev/null || true)
+    [[ $named =~ $DIGEST ]] || fail 1 "$image:$image_tag names no index digest"
+    say "$image:$image_tag is $image@$named: the release works by this digest from here on"
+  done 3<<< "$WORKFLOWS"
+  echo "digest=$named" >> "$GITHUB_OUTPUT"
 }
 
 step_index() {
-  local image amd64 arm64 named
+  local image amd64 arm64
   tools docker jq
   while read -r _ image <&3; do
     read_index "$image@$digest"
@@ -210,11 +228,7 @@ step_index() {
     amd64=$platform
     platform_digest arm64
     arm64=$platform
-    docker buildx imagetools inspect "$image:$image_tag" --format '{{json .Manifest}}' > "$IRONBEE_TMP/tagged.json" 2> "$IRONBEE_TMP/docker.err" \
-      || fail 1 "could not read $image:$image_tag: $(tail -n 1 "$IRONBEE_TMP/docker.err")"
-    named=$(jq -r '.digest // empty' "$IRONBEE_TMP/tagged.json" 2> /dev/null || true)
-    [ "$named" = "$digest" ] || fail 1 "$image:$image_tag names ${named:-nothing}, not $digest"
-    say "$image@$digest: linux/amd64 $amd64, linux/arm64 $arm64; $image:$image_tag names it"
+    say "$image@$digest: linux/amd64 $amd64, linux/arm64 $arm64"
   done 3<<< "$WORKFLOWS"
 }
 
@@ -380,7 +394,7 @@ step_github_release() {
   say "made the GitHub release $tag"
 }
 
-usage="usage: release.sh workflows|plan|index|image ARCH|signature|stamp|token|publish|github-release"
+usage="usage: release.sh workflows|digest|plan|index|image ARCH|signature|stamp|token|publish|github-release"
 step=${1:-}
 [ $# -eq 0 ] || shift
 if [ "$step" = image ]; then
@@ -390,13 +404,14 @@ else
 fi
 case $step in
   workflows) printf '%s\n' "$WORKFLOWS" ;;
-  plan) inputs; step_plan ;;
-  index) inputs; step_index ;;
-  image) inputs; step_image "$1" ;;
-  signature) inputs; step_signature ;;
-  stamp) inputs; step_stamp ;;
+  digest) inputs; step_digest ;;
+  plan) inputs; digest_read; step_plan ;;
+  index) inputs; digest_read; step_index ;;
+  image) inputs; digest_read; step_image "$1" ;;
+  signature) inputs; digest_read; step_signature ;;
+  stamp) inputs; digest_read; step_stamp ;;
   token) inputs; step_token ;;
-  publish) inputs; step_publish ;;
-  github-release) inputs; step_github_release ;;
+  publish) inputs; digest_read; step_publish ;;
+  github-release) inputs; digest_read; step_github_release ;;
   *) fail 2 "$usage" ;;
 esac

@@ -75,11 +75,12 @@ class Release(ScriptTest):
         self.git("tag", "-a", name, "-m", name)
         self.git("push", "--quiet", "origin", "main", f"refs/tags/{name}")
 
-    def release(self, step: str, *args, version: str = "1.0.0", prerelease: str = "rc.2", digest: str = DIGEST, **env):
+    def release(self, step: str, *args, tag: str = "1.0.0-rc.2", digest: str = DIGEST, **env):
+        """A step as the workflow runs it: `tag` the image-tag input, `digest` what the digest step read for it."""
         files = {k: self.tmp / k for k in ("docker.json", "docker.calls", "cosign.json", "cosign.calls")}
         files["docker.json"].write_text(json.dumps(self.registry)); files["cosign.json"].write_text(json.dumps(self.signed))
         files["docker.calls"].write_text(""); files["cosign.calls"].write_text("")
-        e = {"IRONBEE_VERSION": version, "IRONBEE_PRERELEASE": prerelease, "IRONBEE_IMAGE_DIGEST": digest, "GITHUB_REF": "refs/heads/main",
+        e = {"IRONBEE_IMAGE_TAG": tag, "IRONBEE_IMAGE_DIGEST": digest, "GITHUB_REF": "refs/heads/main",
              "GIT_CONFIG_NOSYSTEM": "1", "STUB_DOCKER_STATE": str(files["docker.json"]), "STUB_DOCKER_CALLS": str(files["docker.calls"]),
              "STUB_COSIGN_STATE": str(files["cosign.json"]), "STUB_COSIGN_CALLS": str(files["cosign.calls"]), **env}
         ran = self.run_script("release.sh", e, args=(step, *args), cwd=self.work)
@@ -88,47 +89,64 @@ class Release(ScriptTest):
         return ran
 
 
-class Inputs(Release):
-    def test_each_input_by_its_form(self):
-        bad = {"version": ["", "1.0", "v1.0.0", "01.0.0", "1.00.0", "1.0.0-rc.1", "1.0.0 ", "1.0.0\n", "1.0.0;id", "$(id)"],
-               "prerelease": ["rc", "rc.0", "rc.01", "RC.1", "beta.1", "-rc.1", "rc.1 ", "rc.1\nx"],
-               "digest": ["", "a" * 64, "sha256:" + "A" * 64, "sha256:" + "a" * 63, "sha256:" + "a" * 65, "sha512:" + "a" * 64, "sha256:" + "0" * 64]}
-        for name, values in bad.items():
-            for value in values:
-                with self.subTest(name=name, value=value):
-                    ran = self.release("plan", **{name: value})
-                    self.assertEqual(ran.code, 2, ran.out)
-                    self.assertTrue(ran.out.startswith("::error::"), ran.out)
+STEPS = (("digest", ()), ("plan", ()), ("index", ()), ("image", ("amd64",)), ("signature", ()), ("stamp", ()), ("token", ()), ("publish", ()),
+         ("github-release", ()))
+BY_DIGEST = ("plan", "index", "image", "signature", "stamp", "publish", "github-release")    # the steps after the digest is read
 
-    def test_every_step_checks_the_inputs_first(self):
-        for step, args in (("plan", ()), ("index", ()), ("image", ("amd64",)), ("signature", ()), ("stamp", ()), ("token", ()), ("publish", ()),
-                           ("github-release", ())):
-            with self.subTest(step):
-                ran = self.release(step, *args, version="1.0")
+
+class Inputs(Release):
+    def test_the_image_tag_by_its_form(self):
+        for tag in ("", "1.0", "v1.0.0", "01.0.0", "1.00.0", "1.0.0-rc", "1.0.0-rc.0", "1.0.0-rc.01", "1.0.0-RC.1", "1.0.0-beta.1", "1.0.0rc.1",
+                    "1.0.0-rc.1-rc.2", "1.0.0-rc.1.2", "latest", "1.0.0 ", "1.0.0\n", "1.0.0-rc.1\nx", "1.0.0;id", "$(id)"):
+            with self.subTest(tag=tag):
+                ran = self.release("digest", tag=tag)
                 self.assertEqual(ran.code, 2, ran.out)
-                self.assertIn("version is not MAJOR.MINOR.PATCH", ran.out)
+                self.assertTrue(ran.out.startswith("::error::image-tag is not MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-rc.<N>"), ran.out)
+                self.assertEqual(self.docker, [])
+
+    def test_every_step_checks_the_image_tag_first(self):
+        for step, args in STEPS:
+            with self.subTest(step):
+                ran = self.release(step, *args, tag="1.0")
+                self.assertEqual(ran.code, 2, ran.out)
+                self.assertIn("image-tag is not MAJOR.MINOR.PATCH", ran.out)
                 self.assertEqual((self.docker, self.cosign, ran.calls), ([], [], []))
 
-    def test_the_names_of_a_pre_release_and_of_a_release(self):
-        names = {("1.2.3", "rc.4"): "tag v1.2.3-rc.4, image tag 1.2.3-rc.4, floating tag v0",
-                 ("0.3.0", "rc.1"): "tag v0.3.0-rc.1, image tag 0.3.0-rc.1, floating tag v0",
-                 ("1.2.3", ""): "tag v1.2.3, image tag 1.2.3, floating tag v1",
-                 ("12.0.10", ""): "tag v12.0.10, image tag 12.0.10, floating tag v12"}
-        for (version, prerelease), line in names.items():
-            with self.subTest(version=version, prerelease=prerelease):
-                ran = self.release("plan", version=version, prerelease=prerelease)
+    def test_the_steps_after_the_digest_step_take_its_digest_by_its_form(self):
+        for digest in ("", "a" * 64, "sha256:" + "A" * 64, "sha256:" + "a" * 63, "sha256:" + "a" * 65, "sha512:" + "a" * 64, "sha256:" + "0" * 64):
+            for step, args in STEPS:
+                if step not in BY_DIGEST: continue
+                with self.subTest(digest=digest, step=step):
+                    ran = self.release(step, *args, digest=digest)
+                    self.assertEqual(ran.code, 2, ran.out)
+                    self.assertIn("::error::IRONBEE_IMAGE_DIGEST is ", ran.out)
+                    self.assertEqual((self.docker, self.cosign, ran.calls), ([], [], []))
+        ran = self.release("token", digest="", IRONBEE_PUSH_TOKEN="")                             # the token's own check, not the digest's
+        self.assertIn("IRONBEE_PUSH_TOKEN is not set", ran.out)
+        ran = self.release("digest", digest="")
+        self.assertEqual(ran.code, 0, ran.out)
+
+    def test_what_comes_from_the_image_tag(self):
+        names = {"1.2.3-rc.4": "tag v1.2.3-rc.4, version 1.2.3 (rc.4), floating tag v0",
+                 "0.3.0-rc.1": "tag v0.3.0-rc.1, version 0.3.0 (rc.1), floating tag v0",
+                 "1.2.3-rc.12": "tag v1.2.3-rc.12, version 1.2.3 (rc.12), floating tag v0",
+                 "1.2.3": "tag v1.2.3, version 1.2.3, floating tag v1",
+                 "12.0.10": "tag v12.0.10, version 12.0.10, floating tag v12"}
+        for tag, line in names.items():
+            with self.subTest(tag=tag):
+                ran = self.release("plan", tag=tag)
                 self.assertEqual(ran.code, 0, ran.out)
                 self.assertIn(line, ran.out)
 
     def test_major_version_0_is_never_released(self):
-        ran = self.release("plan", version="0.9.0", prerelease="")
+        ran = self.release("plan", tag="0.9.0")
         self.assertEqual(ran.code, 2)
         self.assertIn("v0 is the pre-releases' tag", ran.out)
 
     def test_the_steps_and_their_arguments(self):
         for args in ((), ("nope",), ("plan", "x"), ("image",), ("image", "amd64", "x")):
             with self.subTest(args):
-                ran = self.run_script("release.sh", {"IRONBEE_VERSION": "1.0.0", "IRONBEE_PRERELEASE": "", "IRONBEE_IMAGE_DIGEST": DIGEST}, args=args, cwd=self.work)
+                ran = self.run_script("release.sh", {"IRONBEE_IMAGE_TAG": "1.0.0", "IRONBEE_IMAGE_DIGEST": DIGEST}, args=args, cwd=self.work)
                 self.assertEqual(ran.code, 2)
                 self.assertIn("usage: release.sh", ran.out)
         self.assertEqual(self.release("image", "s390x").code, 2)
@@ -168,21 +186,21 @@ class Plan(Release):
 
     def test_a_release_is_never_below_the_newest_one(self):
         self.tag("v1.9.0"); self.tag("v1.10.0")                  # by number, not by text
-        ran = self.release("plan", version="1.9.5", prerelease="")
+        ran = self.release("plan", tag="1.9.5")
         self.assertEqual(ran.code, 1, ran.out)
         self.assertIn("v1.9.5 is below the newest release, v1.10.0", ran.out)
-        ran = self.release("plan", version="1.10.1", prerelease="")
+        ran = self.release("plan", tag="1.10.1")
         self.assertEqual(ran.code, 0, ran.out)
         self.assertIn("v1.10.1 is new; the newest release is v1.10.0", ran.out)
-        self.assertEqual(self.release("plan", version="1.9.5", prerelease="rc.1").code, 0)   # a pre-release is not held to it
+        self.assertEqual(self.release("plan", tag="1.9.5-rc.1").code, 0)   # a pre-release is not held to it
 
     def test_pre_releases_and_floating_tags_are_no_release(self):
         self.tag("v2.0.0-rc.1"); self.tag("v0"); self.tag("v3")
-        self.assertEqual(self.release("plan", version="1.0.0", prerelease="").code, 0)
+        self.assertEqual(self.release("plan", tag="1.0.0").code, 0)
 
     def test_a_released_version_takes_no_more_pre_releases(self):
         self.tag("v1.0.0")
-        ran = self.release("plan", prerelease="rc.3")
+        ran = self.release("plan", tag="1.0.0-rc.3")
         self.assertEqual(ran.code, 1)
         self.assertIn("v1.0.0 is released: it takes no more pre-releases", ran.out)
 
@@ -197,7 +215,7 @@ class Plan(Release):
 class Stamp(Release):
     def test_the_digest_and_the_version_and_nothing_else(self):
         before = (ROOT / WORKFLOW).read_text().splitlines()
-        ran = self.release("stamp", version="1.10.0", prerelease="", digest=OTHER)
+        ran = self.release("stamp", tag="1.10.0", digest=OTHER)
         self.assertEqual(ran.code, 0, ran.out)
         after = (self.work / WORKFLOW).read_text().splitlines()
         self.assertEqual(len(after), len(before))
@@ -242,14 +260,37 @@ class Stamp(Release):
                 self.assertEqual((self.work / WORKFLOW).read_text(), variant)
 
 
-class Index(Release):
-    def test_both_platforms_and_the_versions_tag(self):
-        for prerelease in ("rc.2", ""):
-            with self.subTest(prerelease=prerelease):
-                ran = self.release("index", prerelease=prerelease)
+class Digest(Release):
+    def test_the_tag_is_read_once_for_its_digest(self):
+        for tag in ("1.0.0-rc.2", "1.0.0"):
+            with self.subTest(tag=tag):
+                ran = self.release("digest", tag=tag, digest="")
                 self.assertEqual(ran.code, 0, ran.out)
-                tag = "1.0.0" + (f"-{prerelease}" if prerelease else "")
-                self.assertIn(f"{IMAGE}@{DIGEST}: linux/amd64 {AMD64}, linux/arm64 {ARM64}; {IMAGE}:{tag} names it", ran.out)
+                self.assertEqual(ran.outputs, {"digest": DIGEST})
+                self.assertEqual(self.docker, [["buildx", "imagetools", "inspect", f"{IMAGE}:{tag}", "--format", "{{json .Manifest}}"]])
+                self.assertIn(f"{IMAGE}:{tag} is {IMAGE}@{DIGEST}: the release works by this digest from here on", ran.out)
+
+    def test_the_digest_is_the_one_the_tag_names_now(self):
+        self.registry["tags"][f"{IMAGE}:1.0.0"] = OTHER                       # a release's signature then shows whose it is
+        ran = self.release("digest", tag="1.0.0", digest="")
+        self.assertEqual((ran.code, ran.outputs), (0, {"digest": OTHER}))
+
+    def test_a_tag_not_in_the_registry(self):
+        ran = self.release("digest", tag="1.0.0-rc.9", digest="")
+        self.assertEqual(ran.code, 1)
+        self.assertIn(f"could not read {IMAGE}:1.0.0-rc.9", ran.out)
+        self.assertEqual(ran.outputs, {})
+
+
+class Index(Release):
+    def test_both_platforms_by_the_digest_alone(self):
+        for tag in ("1.0.0-rc.2", "1.0.0"):
+            with self.subTest(tag=tag):
+                self.registry["tags"] = {}                                        # the tag is never read again
+                ran = self.release("index", tag=tag)
+                self.assertEqual(ran.code, 0, ran.out)
+                self.assertIn(f"{IMAGE}@{DIGEST}: linux/amd64 {AMD64}, linux/arm64 {ARM64}", ran.out)
+                self.assertEqual(self.docker, [["buildx", "imagetools", "inspect", "--raw", f"{IMAGE}@{DIGEST}"]])
 
     def test_platforms_other_than_the_two(self):
         manifest = {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json", "config": {}, "layers": []}
@@ -261,16 +302,6 @@ class Index(Release):
                 ran = self.release("index")
                 self.assertEqual(ran.code, 1, ran.out)
                 self.assertIn(says, ran.out)
-
-    def test_the_versions_tag_names_another_index(self):
-        self.registry["tags"][f"{IMAGE}:1.0.0-rc.2"] = OTHER
-        ran = self.release("index")
-        self.assertEqual(ran.code, 1)
-        self.assertIn(f"{IMAGE}:1.0.0-rc.2 names {OTHER}, not {DIGEST}", ran.out)
-        del self.registry["tags"][f"{IMAGE}:1.0.0"]
-        ran = self.release("index", prerelease="")
-        self.assertEqual(ran.code, 1)
-        self.assertIn(f"could not read {IMAGE}:1.0.0", ran.out)
 
     def test_an_index_not_in_the_registry(self):
         ran = self.release("index", digest=OTHER)
@@ -316,20 +347,20 @@ class Signature(Release):
 
     def test_a_release_verifies_with_the_committed_key(self):
         self.with_key()
-        ran = self.release("signature", prerelease="")
+        ran = self.release("signature", tag="1.0.0")
         self.assertEqual(ran.code, 0, ran.out)
         self.assertEqual(ran.outputs, {"signature": "verified"})
         self.assertEqual(self.cosign, [["verify", "--key", KEY, f"{IMAGE}@{DIGEST}"]])
 
     def test_a_release_without_the_key(self):
-        ran = self.release("signature", prerelease="")
+        ran = self.release("signature", tag="1.0.0")
         self.assertEqual(ran.code, 1)
         self.assertIn(f"{KEY} is missing", ran.out)
         self.assertEqual((self.cosign, ran.outputs), ([], {}))
 
     def test_a_release_that_does_not_verify(self):
         self.with_key(); self.signed = {f"{IMAGE}@{DIGEST}": [TESTS_PEM]}
-        ran = self.release("signature", prerelease="")
+        ran = self.release("signature", tag="1.0.0")
         self.assertEqual(ran.code, 1)
         self.assertIn("its signature does not verify with", ran.out)
         self.assertEqual(ran.outputs, {})
@@ -414,7 +445,7 @@ class Publish(Release):
     def test_a_release_moves_its_major_versions_tag(self):
         self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
         v0 = self.ref("refs/tags/v0")
-        ran = self.release("publish", prerelease="")
+        ran = self.release("publish", tag="1.0.0")
         self.assertEqual(ran.code, 0, ran.out)
         head = self.ref("main")
         self.assertEqual((self.ref("refs/tags/v1.0.0"), self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, head, v0))
@@ -422,7 +453,7 @@ class Publish(Release):
 
     def test_a_pre_release_promoted_as_it_is_is_an_empty_commit(self):
         self.tag("v1.0.0-rc.2")
-        ran = self.release("publish", prerelease="")
+        ran = self.release("publish", tag="1.0.0")
         self.assertEqual(ran.code, 0, ran.out)
         head = self.ref("main")
         self.assertEqual(self.git("diff", "--name-only", f"{head}~1", head, cwd=self.origin), "")
@@ -430,7 +461,7 @@ class Publish(Release):
 
     def test_a_run_again_after_its_push_moves_nothing(self):
         self.assertEqual(self.release("publish").code, 0)
-        self.assertEqual(self.release("publish", prerelease="rc.3", digest=OTHER).code, 0)   # v0 moves on to rc.3
+        self.assertEqual(self.release("publish", tag="1.0.0-rc.3", digest=OTHER).code, 0)   # v0 moves on to rc.3
         before = self.refs()
         ran = self.release("publish")
         self.assertEqual(ran.code, 0, ran.out)
@@ -499,7 +530,7 @@ class GithubRelease(Release):
 
     def test_a_release(self):
         self.tag("v1.0.0")
-        made = self.made(self.release("github-release", prerelease="", IRONBEE_SIGNATURE="verified"), "v1.0.0")
+        made = self.made(self.release("github-release", tag="1.0.0", IRONBEE_SIGNATURE="verified"), "v1.0.0")
         self.assertEqual((made["prerelease"], made["make_latest"]), (False, "true"))
         self.assertTrue(made["body"].startswith(f"Image: `{IMAGE}@{DIGEST}`"))
         self.assertIn(f"    cosign verify --key {KEY} {IMAGE}@{DIGEST}\n", made["body"])
@@ -508,7 +539,7 @@ class GithubRelease(Release):
         self.tag("v1.0.0")
         for signature in ("tests", "", "yes"):
             with self.subTest(signature):
-                ran = self.release("github-release", prerelease="", IRONBEE_SIGNATURE=signature)
+                ran = self.release("github-release", tag="1.0.0", IRONBEE_SIGNATURE=signature)
                 self.assertEqual(ran.code, 2)
                 self.assertEqual(ran.calls, [])
 
