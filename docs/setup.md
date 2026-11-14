@@ -20,6 +20,92 @@ From your side:
 - a model, and its key where it needs one ([Models](models.md));
 - GitHub's hosted runners, or runners of your own ([Where the job runs](#where-the-job-runs)).
 
+## With IronBee's CLI
+
+IronBee's CLI takes the steps below for you: `ironbee runner setup --host github` registers the repositories, stores
+the secrets and adds the workflow file. The steps stay written out below for doing by hand; a setup made by hand and
+one made by the command are the same objects, and `ironbee runner check` reads either.
+
+```sh
+npm install -g @ironbee-ai/cli
+export IRONBEE_API_KEY IRONBEE_REGISTRY_TOKEN IRONBEE_MODEL_KEY   # or let the command ask
+ironbee runner setup --host github --repos acme/shop,acme/payments --model-provider anthropic
+```
+
+It needs Node.js 22 or later. Inside a clone of a github.com repository, `--host github` may be left out: the command
+takes the host from the directory's git remote.
+
+**Its sign-in to GitHub** is your own, through GitHub's CLI, `gh` (`gh auth login`; a `GH_TOKEN` in the environment
+serves the same way). The command stores no GitHub credential and sends none to IronBee: it calls GitHub through `gh`,
+and IronBee's API only to register the repositories. You must be able to administer each repository (its Actions
+secrets) and to push a workflow file there (the token's `workflow` scope); for organization secrets, an owner of the
+organization.
+
+**The secrets** come from their environment variables, or are asked for and typed unseen; the command writes none of
+them to disk and prints none of them. `IRONBEE_API_KEY` and `IRONBEE_REGISTRY_TOKEN` are needed, `IRONBEE_MODEL_KEY` is
+asked for (empty for an endpoint that takes none), and `IRONBEE_MODEL_HEADERS`, `IRONBEE_KNOWLEDGE_TOKEN` and
+`IRONBEE_JEV_KEY` are taken from the environment when set. Each is stored as the Actions secret of the same name, and
+the workflow file passes it.
+
+| Flag | What |
+|---|---|
+| `--host github` | this host (else the directory's git remote, else asked) |
+| `--repos <list>` | the repositories, `owner/name`, separated by commas |
+| `--org <organization>` | every repository of the organization that you administer and that is not archived, in place of `--repos` |
+| `--org-secrets` | the organization's secrets, visible to the repositories named, in place of each repository's own (below) |
+| `--direct` | commit the workflow file to the default branch, in place of a pull request |
+| `--model-provider`, `--model-url`, `--model-name`, `--model-prefix`, `--model-max-output`, `--aws-region` | the model's inputs ([Models](models.md)) |
+| `--model-ca-certificate <file>` | a PEM file: the private authority that signed your model endpoint's certificate |
+| `--runs-on <label>` | a self-hosted runner's label, or a JSON list of labels ([Where the job runs](#where-the-job-runs)) |
+| `--knowledge-repository <owner/name>`, `--knowledge-ref <ref>` | the rules repository ([Settings and rules](settings-and-rules.md#the-rules-repository)) |
+| `--ignore-paths`, `--target-branches`, `--skip-labels`, `--skip-title-keywords` | for a repository left without a project; each a list separated by commas |
+| `--run-reports false` | a run tells IronBee only that it started ([What reaches IronBee](what-reaches-ironbee.md#with-run-reports-off)) |
+| `--version <version>` | the release a new workflow file names; the latest release of `ironbee-ai/ironbee-github-runner` when not given |
+| `--update` | move the release an existing workflow file names, to the latest or to `--version` |
+| `--component <owner/name>@<ref>` | another workflow repository and ref than this one, such as a copy of yours; no release is read |
+
+What the command is not given by a flag it asks for, in a terminal; without one it stops and names the flag.
+
+**What it does, in this order.** Each step first reads what exists, so the command can be run again:
+
+1. **Registers the repositories** with IronBee ([step 3](#3-register-the-repository)). A refusal (the feature not
+   enabled, the licence ended or suspended, a repository IronBee's cloud product reviews) ends the command before
+   anything is changed on GitHub.
+2. **The secrets**, written through `gh`, each repository's own by default. A secret that is already there is kept.
+   With `--org-secrets` they are the organization's, visible to selected repositories:
+   - the command first checks what that needs, and says what is missing: the sign-in's `admin:org` scope, which `gh`'s
+     default sign-in lacks (`gh auth refresh -s admin:org`), and a plan on which the repositories can read an
+     organization's secrets: a private repository on GitHub Free cannot, and the command then refuses `--org-secrets`
+     and names repository secrets instead;
+   - a secret that is not there is made with the repositories named as its list;
+   - a secret that is already there is never set again, which would need its value typed and would replace its list:
+     the command adds each repository named to that secret's list.
+3. **The workflow file**, `.github/workflows/ironbee-review.yml`, as [step 2](#2-add-the-workflow-file) shows it, at
+   the release given, with the model's inputs, the repository's default branch in its `push` trigger, and
+   `ironbee-api-url` when the CLI is set to an API other than `https://api.service.ironbee.ai`. By default on a branch
+   of its own, `ironbee/runner-setup`, with a pull request opened for it: a protected default branch takes it no other
+   way, and that pull request is the first one reviewed, with the settings step 1 put in place. With `--direct`,
+   committed to the default branch. A workflow file that is already there is left as it is; `--update` moves only the
+   release it names, by a pull request too unless `--direct` is given.
+4. **Prints** what it made and kept, never a secret, and that `Code Review Result` becomes a required check by your
+   branch protection or ruleset ([step 5](#5-make-code-review-result-a-required-check)), which the command does not set.
+
+**More repositories:** `ironbee runner add acme/billing --host github`: the same steps for the repositories named.
+
+**`ironbee runner check`** changes nothing. For each repository it reads the workflow file on the default branch and
+its release against the latest; that the secrets the file passes exist (by name: GitHub shows no value), as the
+repository's own or as an organization secret with the repository on its list; that GitHub Actions is on and the
+repository may call a workflow of `ironbee-ai/ironbee-github-runner`; the registration; and whether `Code Review Result`
+is required, as information. `--fix` takes the setup's steps for what is missing.
+
+```sh
+ironbee runner check --host github --repos acme/shop,acme/payments
+```
+
+The command ends with exit code 0 when nothing it found is an error, 1 otherwise, 2 for a flag it cannot read. Your own
+GitHub App ([Identity](identity.md)), a self-hosted runner, the rules repository's content and branch protection are
+not the command's.
+
 ## 1. Store the secrets
 
 Store the API key, the registry token and your model's key as Actions secrets of the repository or of its
