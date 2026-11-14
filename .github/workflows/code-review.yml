@@ -223,7 +223,7 @@ jobs:
       queue: max
     # The release's image, by the digest the release writes here: the version the register job sends.
     container:
-      image: docker.io/ironbeeai/ironbee-code-review-runner@sha256:d7138a7ae3bbc42f7922ca86bf77e4c936af227f0533189cc431a26b22fb8382
+      image: docker.io/ironbeeai/ironbee-code-review-runner@sha256:20a9a201f8fd113d1108a42823c4fc2f5309de34b8f6f624d189847e0fcf281e
       credentials:
         username: ironbeeai                                  # an organization access token signs in with the organization's name
         password: ${{ secrets.registry-token }}
