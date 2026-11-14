@@ -126,9 +126,9 @@ class Workflow(unittest.TestCase):
         self.assertEqual(required, REQUIRED)
         self.assertTrue(all(v["type"] == "string" for v in self.call["inputs"].values()))
 
-    def test_one_job_named_review(self):
-        self.assertEqual(set(self.jobs), {"review"})                 # a pull request's checks list it once, as <caller job> / Review
-        self.assertEqual(self.job["name"], "Review")
+    def test_one_job_named_job(self):
+        self.assertEqual(set(self.jobs), {"review"})                 # a pull request's checks list it once, as <caller's workflow> / <caller's job> / Job
+        self.assertEqual(self.job["name"], "Job")
         self.assertNotIn("container", self.job)                       # the image runs in a step
         self.assertNotIn("outputs", self.job)
 
@@ -313,6 +313,12 @@ class CustomersFile(unittest.TestCase):
 
     def test_the_permissions(self):
         self.assertEqual(self.wf["permissions"], {"contents": "read", "pull-requests": "write", "checks": "write", "issues": "read"})
+
+    def test_the_names_a_pull_request_shows(self):
+        """`IronBee / Code Review / Job` beside `IronBee / Code Review Result`."""
+        self.assertEqual(self.wf["name"], "IronBee")
+        self.assertEqual(list(self.wf["jobs"]), ["code-review"])
+        self.assertEqual(self.wf["jobs"]["code-review"]["name"], "Code Review")
 
     def test_the_call(self):
         [job] = self.wf["jobs"].values()

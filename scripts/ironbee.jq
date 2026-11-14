@@ -34,8 +34,9 @@ def ours_post($login): ((.user.login // "") == $login) and ((.body // "") | has_
 # A review of ours on that commit.
 def ours_review($login; $head): .commit_id == $head and ours_post($login);
 
-# A check run of ours: the gate's name, written by our identity's App.
-def ours_check($slug): .name == "IronBee review" and (((.app.slug // "") | ascii_downcase) == ($slug | ascii_downcase));
+# A check run of ours: one of the check's `$names` (its own, and the one the pre-releases wrote), written by our
+# identity's App.
+def ours_check($slug; $names): (.name as $n | any($names[]; . == $n)) and (((.app.slug // "") | ascii_downcase) == ($slug | ascii_downcase));
 
 # A review's conclusion on a check of ours: success, or action_required while findings hold the merge; failure is what a
 # released pre-release wrote for that.

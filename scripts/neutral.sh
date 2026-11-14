@@ -106,9 +106,9 @@ ijq --argjson own "$own" 'include "ironbee"; [.[] | select(.id != $own and (.con
 if [ ! -s "$IRONBEE_TMP/review.json" ]; then
   exit 0
 fi
-jq '{status: "completed", conclusion: (if .conclusion == "failure" then "action_required" else .conclusion end),
-     output: {title: (.output.title // "" | if . == "" then "IronBee review" else . end),
-              summary: (.output.summary // "" | if . == "" then "IronBee review" else . end)}}' \
+jq --arg name "$IRONBEE_CHECK" '{status: "completed", conclusion: (if .conclusion == "failure" then "action_required" else .conclusion end),
+     output: {title: (.output.title // "" | if . == "" then $name else . end),
+              summary: (.output.summary // "" | if . == "" then $name else . end)}}' \
   "$IRONBEE_TMP/review.json" > "$IRONBEE_TMP/copy.json"
 conclusion=$(jq -r .conclusion "$IRONBEE_TMP/copy.json")
 status=$(GH_TOKEN=$write_token api PATCH "repos/$IRONBEE_REPO/check-runs/$own" "$IRONBEE_TMP/copied.json" "$IRONBEE_TMP/copy.json")

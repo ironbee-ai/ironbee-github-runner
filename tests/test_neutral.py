@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import unittest
 
-from support import APP_LOGIN, APP_SLUG, APP_TOKEN, GROUP_HEAD, HEAD, JOB_LOGIN, JOB_TOKEN, ScriptTest, check, marked, seed_check
+from support import APP_LOGIN, APP_SLUG, APP_TOKEN, CHECK, CHECK_PRE, GROUP_HEAD, HEAD, JOB_LOGIN, JOB_TOKEN, ScriptTest, check, marked, seed_check
+
+LISTED = [f"repos/acme/widgets/commits/{HEAD}/check-runs?check_name=Code%20Review%20Result&filter=all&per_page=100",
+          f"repos/acme/widgets/commits/{HEAD}/check-runs?check_name=IronBee%20review&filter=all&per_page=100"]   # one listing a name
 
 
 class Neutral(ScriptTest):
@@ -25,14 +28,13 @@ class TheRule(Neutral):
         ran = self.neutral()
         self.assertEqual(ran.code, 0, ran.out + ran.err)
         [c] = self.ours(ran)
-        self.assertEqual((c["name"], c["status"], c["conclusion"], c["output"]["title"]), ("IronBee review", "completed", "neutral", "Not reviewed"))
+        self.assertEqual((c["name"], c["status"], c["conclusion"], c["output"]["title"]), (CHECK, "completed", "neutral", "Not reviewed"))
+        self.assertNotIn("details_url", c)                                              # a neutral links nowhere
         self.assertIn("The review did not run", c["output"]["summary"])
         self.assertIn("`@ironbee-ai review`", c["output"]["summary"])
         self.assertEqual([(w["method"], w["path"], w["token"]) for w in ran.writes()], [("POST", "repos/acme/widgets/check-runs", JOB_TOKEN)])
         reads = [(c["method"], c["path"]) for c in ran.calls if c["method"] == "GET"]
-        self.assertEqual(reads, [("GET", f"repos/acme/widgets/commits/{HEAD}/check-runs?check_name=IronBee%20review&filter=all&per_page=100"),
-                                 ("GET", "repos/acme/widgets/pulls/7/reviews?per_page=100"),
-                                 ("GET", f"repos/acme/widgets/commits/{HEAD}/check-runs?check_name=IronBee%20review&filter=all&per_page=100")])
+        self.assertEqual(reads, [*(("GET", path) for path in LISTED), ("GET", "repos/acme/widgets/pulls/7/reviews?per_page=100"), *(("GET", path) for path in LISTED)])
 
     def test_a_check_of_ours_is_left_as_it_is(self):
         for conclusion in ("action_required", "failure", "success", "neutral"):          # failure: a released pre-release's blocking one
@@ -44,8 +46,23 @@ class TheRule(Neutral):
                 self.assertEqual(ran.writes(), [])
                 self.assertIn("left as it is", ran.out)
 
+    def test_a_check_of_ours_under_the_pre_releases_name_is_left_as_it_is(self):
+        for conclusion in ("action_required", "failure", "neutral"):
+            with self.subTest(conclusion):
+                self.state["checks"] = []
+                seed_check(self.state, conclusion, name=CHECK_PRE)
+                ran = self.neutral()
+                self.assertEqual(ran.code, 0, ran.err)
+                self.assertEqual(ran.writes(), [])
+                self.assertIn("left as it is", ran.out)
+
+    def test_a_check_of_ours_under_another_name_is_not_the_check(self):
+        seed_check(self.state, "failure", name="lint")
+        self.assertEqual([c["conclusion"] for c in self.ours(self.neutral()) if c["name"] == CHECK], ["neutral"])
+
     def test_another_apps_check_of_that_name_is_not_ours(self):
         seed_check(self.state, "failure", app="other-app")
+        seed_check(self.state, "failure", app="other-app", name=CHECK_PRE)
         ran = self.neutral()
         self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
 
@@ -92,7 +109,7 @@ class TheRule(Neutral):
                 ran = self.neutral()
                 self.assertEqual(ran.code, 0, ran.out + ran.err)
                 self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
-                self.assertEqual([c["method"] for c in ran.calls], ["GET", "GET", "POST", "GET", "POST", "GET"])
+                self.assertEqual([c["method"] for c in ran.calls], ["GET", "GET", "GET", "POST", "GET", "GET", "POST", "GET", "GET"])
                 self.assertEqual(ran.sleeps, ["2"])
 
     def test_a_create_that_made_the_check_is_not_sent_again(self):
@@ -127,7 +144,7 @@ class TheRule(Neutral):
         ran = self.neutral()
         self.assertEqual(ran.code, 0, ran.out + ran.err)
         self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
-        self.assertEqual([c["method"] for c in ran.calls], ["GET", "GET", "POST", "POST", "GET"])     # no look between: a 429 made nothing
+        self.assertEqual([c["method"] for c in ran.calls], ["GET", "GET", "GET", "POST", "POST", "GET", "GET"])     # no look between: a 429 made nothing
         self.assertEqual(ran.sleeps, ["2"])
 
     def test_a_create_still_refused_with_429_is_tried_again_after_a_look(self):
@@ -208,6 +225,15 @@ class TheSecondLook(Neutral):
         ran = self.neutral()
         self.assertEqual([w["method"] for w in ran.writes()], ["POST"])
         self.assertIn("already says failure: a review rewrote it", ran.out)
+
+    def test_a_conclusion_under_the_pre_releases_name_is_ours_too(self):
+        """A pre-release's check is ours: its conclusion is copied onto ours, which keeps the check's own name; an empty
+        title or summary is copied as the check's name."""
+        self.state["on_create"] = {"before": [check("action_required", name=CHECK_PRE, title="", summary="")]}
+        ran = self.neutral()
+        self.assertEqual(ran.code, 0, ran.out + ran.err)
+        self.assertEqual([(c["name"], c["conclusion"], c["output"]["title"]) for c in self.ours(ran)], [(CHECK_PRE, "action_required", ""), (CHECK, "action_required", CHECK)])
+        self.assertIn("copied", ran.out)
 
     def test_a_neutral_beside_it_is_no_conclusion(self):
         self.state["on_create"] = {"before": [check("neutral", title="Retracted")]}

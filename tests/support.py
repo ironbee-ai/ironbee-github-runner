@@ -48,7 +48,11 @@ def github() -> dict:
             "permissions": {"alice": "write", "bob": "admin", "carol": "maintain", "reader": "read"}, "fail": [], "next_id": 1000}
 
 
-def check(conclusion: str, app: str = "github-actions", head: str = HEAD, name: str = "IronBee review", title: str = "t", summary: str = "s") -> dict:
+CHECK = "Code Review Result"                                # the check's name, the only one written
+CHECK_PRE = "IronBee review"                                # the name the pre-releases wrote, still read as ours
+
+
+def check(conclusion: str, app: str = "github-actions", head: str = HEAD, name: str = CHECK, title: str = "t", summary: str = "s") -> dict:
     """A check run another writer makes around ours (the stub's on_create), `app` the slug of the App it writes as."""
     return {"name": name, "head_sha": head, "status": "completed", "conclusion": conclusion, "output": {"title": title, "summary": summary}, "app": app}
 

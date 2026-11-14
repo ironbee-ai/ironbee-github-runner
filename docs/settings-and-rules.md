@@ -11,7 +11,7 @@ reviewer's settings, are adjusted in [the review file](review-file.md).
 |---|---|
 | `depth`, `focusAreas`, `extraChecks`, `commentOn`, `language` | apply |
 | `suggestedFixes`, `diagrams`, `summary` | apply |
-| `mergeBlock` | applies, through the `IronBee review` check ([the check](required-check.md)) |
+| `mergeBlock` | applies, through the `Code Review Result` check ([the check](required-check.md)) |
 | `answerQuestions` | applies, with the cloud's meaning: questions asked in reply to one of the reviewer's comments |
 | `closeFixedThreads` | applies where the token may resolve threads ([Setup](setup.md#resolving-threads)) |
 | `autoReview`, `reviewDrafts`, `reviewBotPullRequests` | apply, evaluated by the runner |

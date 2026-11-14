@@ -1,13 +1,26 @@
-# The `IronBee review` check
+# The `Code Review Result` check
 
-Each head commit of a pull request gets at most one check run named `IronBee review`, written with the reviewer's
+Each head commit of a pull request gets at most one check run named `Code Review Result`, written with the reviewer's
 identity ([Identity](identity.md)). It is the merge gate: you can make it a required check. The workflow's own job,
-`Review`, shows beside it as `<your job> / Review`; its result is green unless the run itself failed, and it is not the
-check to require.
+`Job`, shows beside it as `<your workflow> / <your job> / Job`. With the [setup](setup.md)'s file a pull request
+shows `IronBee / Code Review Result` and `IronBee / Code Review / Job`. The job's result is green unless the run
+itself failed, and it is not the check to require.
+
+**Its details link.** A review's conclusion links to the review the reviewer posted on that head (or the short review
+below): GitHub's "Details", and the "Resolve" an `action_required` shows, open it. A `neutral` written because nothing
+was reviewed links to no review; one a retract turns from a conclusion keeps the link it had.
+
+**The pre-releases' name.** The pre-releases (`v1.0.0-rc.1` to `-rc.3`) named the check `IronBee review`. A check of
+that name written with the reviewer's identity is still read as the reviewer's, so a head that holds one gets no second
+check: a later review rewrites it in place, under the new name. A branch rule that requires `IronBee review` (a
+pre-release's, or IronBee's cloud product's, whose check keeps that name) must require `Code Review Result` instead:
+switch the rule when the workflow file that calls this release reaches the default branch, not before. An open pull
+request whose head shows only `IronBee review` then waits until `@ironbee-ai review` or a push rewrites it under the
+new name; a re-run of its old run does not, since a re-run runs the release it ran before.
 
 ## How it concludes
 
-| What the run did | The head has no `IronBee review` of the reviewer's | It has one |
+| What the run did | The head has no `Code Review Result` of the reviewer's | It has one |
 |---|---|---|
 | **reviewed**: a review, or a command that ran one. On a head the last round already read, the review reads nothing again (or only what a partial round left unread) and concludes from the pull request's texts as they are now | created: `action_required` when findings at or above the team's `mergeBlock` level are open, else `success`; an `action_required` on a head that holds no review of the reviewer's gets a short one there first (below) | rewritten the same way, with the same short review first |
 | **a pull request's event that reviewed nothing**: a gate, too large, a release merge already reviewed, refused by IronBee, IronBee unreachable, failed before its review was posted, or no secrets in the run | created: `neutral`, titled "Not reviewed", with the reason in one sentence, when the head is still the event's own and the pull request holds no review of the reviewer's on it. On a head pushed since, nothing: that head's own run decides | left as it is |
@@ -50,7 +63,7 @@ while it summarizes has already concluded.
 
 ## Making it required
 
-Add `IronBee review` as a required status check in the branch's protection rule or ruleset.
+Add `Code Review Result` as a required status check in the branch's protection rule or ruleset.
 
 - **`neutral` passes a required check.** A gate, a licence problem or a run that could not start never blocks a
   merge. An `action_required` an earlier review wrote stays until a later review of that head, a retract, or a push.
@@ -73,8 +86,8 @@ Add `IronBee review` as a required status check in the branch's protection rule 
 
 ## What the check is worth
 
-**What the check says, in IronBee's cloud product and here.** `IronBee review` reflects the findings that nobody who
-counts has turned down. The pull request's author, and anyone else who counts, can close a finding with a reply or a
+**What the check says, in IronBee's cloud product and here.** The check (`IronBee review` in the cloud, `Code Review
+Result` here) reflects the findings that nobody who counts has turned down. The pull request's author, and anyone else who counts, can close a finding with a reply or a
 thumbs-down; someone who may write to the repository can hide a comment, resolve a thread, `retract`, or `pause` and
 then push. The check is a team's own discipline made visible, not a control over its members: a team that must hold
 merges against its own developers requires a human approval beside it.
@@ -83,7 +96,7 @@ merges against its own developers requires a human approval beside it.
 write access can edit it; in the cloud product it is in IronBee's database. And anyone who can push a branch can
 change the workflow file on that branch, since a pull request's and an inline reply's events run the branch's own
 file, and so read the secrets the job is given; and can add a workflow of their own that writes a check run named
-`IronBee review`, or comments carrying the reviewer's state, as `github-actions[bot]`, which GitHub does not tell from
+`Code Review Result`, or comments carrying the reviewer's state, as `github-actions[bot]`, which GitHub does not tell from
 the reviewer's. That is GitHub's rule for every workflow secret and every check a workflow writes, not this
 feature's.
 

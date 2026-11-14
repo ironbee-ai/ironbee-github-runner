@@ -1,6 +1,7 @@
 # IronBee's code review in a repository's own GitHub Actions: the reusable workflow that a repository's own workflow
-# file calls (examples/ironbee-review.yml). One job, so that a pull request's checks show it once beside the
-# `IronBee review` check it writes. Its steps, each for the events it serves:
+# file calls (examples/ironbee-review.yml). One job, `Job`, so that a pull request's checks show it once
+# (`<caller's workflow> / <caller's job> / Job`) beside the `Code Review Result` check it writes. Its steps, each for the
+# events it serves:
 #
 #   register  a push of that file to the default branch, or a manual start: the repository's project at IronBee
 #   decide    a pull request's event: the action and its pull request, or the end of the run, with no image pulled
@@ -130,7 +131,7 @@ on:
 
 jobs:
   review:
-    name: Review
+    name: Job
     # A pull request's events, a manual start, and a push of the caller's file (its trigger names the default branch and
     # the file's path).
     if: >-

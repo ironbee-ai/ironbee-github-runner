@@ -1,5 +1,5 @@
 # .github/workflows/ironbee-review.yml in the reviewed repository: the triggers, the permissions and the call.
-name: IronBee review
+name: IronBee
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -18,7 +18,8 @@ permissions:
   checks: write
   issues: read
 jobs:
-  ironbee:
+  code-review:
+    name: Code Review
     uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
     with:
       model-provider: anthropic

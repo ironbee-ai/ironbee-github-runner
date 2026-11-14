@@ -1,6 +1,6 @@
 # Identity: the job token or your own GitHub App
 
-The reviewer reads the repository and writes its comments and the `IronBee review` check with one identity. By
+The reviewer reads the repository and writes its comments and the `Code Review Result` check with one identity. By
 default that is the job token GitHub gives every workflow job (`GITHUB_TOKEN`): there is nothing to create. You may run
 it as a GitHub App of your own instead. IronBee holds neither credential.
 
@@ -21,7 +21,7 @@ App ([Setup](setup.md#resolving-threads)).
 The job token's identity is `github-actions[bot]`, which nobody would address, so under it the reviewer answers to
 `@ironbee-ai` alone: `@github-actions` is never a command. Other workflows also write as `github-actions[bot]`. The
 reviewer tells its own texts by its marker beside the author, and looks only at check runs of its own identity;
-[The `IronBee review` check](required-check.md#what-the-check-is-worth) says what that is worth.
+[The `Code Review Result` check](required-check.md#what-the-check-is-worth) says what that is worth.
 
 ## Your own GitHub App
 
@@ -34,7 +34,8 @@ reviewer tells its own texts by its marker beside the author, and looks only at 
 
    ```yaml
    jobs:
-     ironbee:
+     code-review:
+       name: Code Review
        uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
        with:
          model-provider: anthropic
@@ -69,7 +70,7 @@ GitHub runs the workflows of Dependabot's pull requests without the repository's
 Dependabot secrets of its own. Such a run reviews nothing, and its check depends on the identity:
 
 - **Under the job token,** the pull request gets a `neutral` check, which passes a required check.
-- **Under your own App,** there is no key to write a check with, so the pull request gets none. Where `IronBee review`
+- **Under your own App,** there is no key to write a check with, so the pull request gets none. Where `Code Review Result`
   is a required check, give Dependabot the App's id and key, as Dependabot secrets under the names your workflow file
   reads, so that its pull requests get their `neutral` check.
 

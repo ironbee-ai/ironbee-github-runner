@@ -3,7 +3,7 @@
 This repository holds IronBee's reusable GitHub Actions workflow for code review on your own compute, with your own
 model. A job in your GitHub Actions runs IronBee's reviewer, from a container image IronBee ships, on your pull
 requests: first reviews and follow-up rounds after each push, answers to questions on its threads, and commands
-addressed to it in the conversation. It writes its review on the pull request and a check run named `IronBee review`
+addressed to it in the conversation. It writes its review on the pull request and a check run named `Code Review Result`
 that you can make a required check.
 
 - **Your code stays with you.** The repository is cloned and read inside your job. Model calls go from your job to
@@ -32,7 +32,7 @@ for the image. From your side: a key for your model.
 2. Add `.github/workflows/ironbee-review.yml`:
 
    ```yaml
-   name: IronBee review
+   name: IronBee
    on:
      pull_request:
        types: [opened, synchronize, reopened, ready_for_review]
@@ -51,7 +51,8 @@ for the image. From your side: a key for your model.
      checks: write
      issues: read
    jobs:
-     ironbee:
+     code-review:
+       name: Code Review
        uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
        with:
          model-provider: anthropic
@@ -63,8 +64,9 @@ for the image. From your side: a key for your model.
 
 3. Commit it. Pushed straight to the default branch, it registers the repository in the IronBee console before any
    pull request. Added by a pull request, that pull request is the first one reviewed.
-4. Optionally, make `IronBee review` a required check. Read [The `IronBee review` check](docs/required-check.md)
-   first: it says what the check is worth.
+4. Optionally, make `Code Review Result` a required check. Read [The `Code Review Result` check](docs/required-check.md)
+   first: it says what the check is worth. A pull request shows it as `IronBee / Code Review Result`, beside the
+   workflow's job as `IronBee / Code Review / Job`.
 
 The [setup guide](docs/setup.md) explains each step and every input.
 
@@ -78,7 +80,7 @@ The [setup guide](docs/setup.md) explains each step and every input.
 | [Supported models](docs/supported-models.md) | what was measured, and on which models |
 | [Settings and rules](docs/settings-and-rules.md) | the console's settings on a self-hosted run, and a rules repository for all your repositories |
 | [The review file](docs/review-file.md) | `.ironbee/review.yaml`: each task's model and effort, and the settings you can adjust |
-| [The `IronBee review` check](docs/required-check.md) | how it concludes, making it required, and what it is worth |
+| [The `Code Review Result` check](docs/required-check.md) | how it concludes, making it required, and what it is worth |
 | [What reaches IronBee](docs/what-reaches-ironbee.md) | the bodies sent, what is never sent, what stays with you |
 | [The licence](docs/licence.md) | the end date, the developer limit, and what happens past each |
 | [Verifying the image](docs/verifying-the-image.md) | the image's signature and bill of materials |

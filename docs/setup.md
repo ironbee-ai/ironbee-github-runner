@@ -31,7 +31,7 @@ organization. Their names are yours to choose; this guide uses `IRONBEE_API_KEY`
 Add `.github/workflows/ironbee-review.yml` to the repository:
 
 ```yaml
-name: IronBee review
+name: IronBee
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -50,7 +50,8 @@ permissions:
   checks: write
   issues: read
 jobs:
-  ironbee:
+  code-review:
+    name: Code Review
     uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
     with:
       model-provider: anthropic
@@ -74,7 +75,7 @@ What each part does:
   The last two triggers register the repository with IronBee (step 3). Set `branches` to your default branch and
   `paths` to this file's own path.
 - **The permissions.** `contents: read` to clone and read, `pull-requests: write` to post the review and its replies,
-  `checks: write` for the `IronBee review` check, and `issues: read` for the issues a pull request links. Once a
+  `checks: write` for the `Code Review Result` check, and `issues: read` for the issues a pull request links. Once a
   workflow sets `permissions`, a scope it does not list is none. Resolving threads needs one more
   ([Resolving threads](#resolving-threads)).
 - **The version.** `@v1.0.0` names an exact release. Its tag is never moved, and the release names its image by
@@ -85,8 +86,9 @@ What each part does:
   secrets, and that run must still reach the decide step, which counts a run as having its secrets only when both are
   set. `model-key` is needed at a model provider's own endpoint; every other one only for what it names.
 
-The reusable workflow is one job, `Review`, so a pull request's checks show it once (as `<your job> / Review`, beside
-the `IronBee review` check it writes). Its steps:
+The reusable workflow is one job, `Job`, so a pull request's checks show it once, beside the `Code Review Result`
+check it writes. With the file above they read `IronBee / Code Review / Job (pull_request)` and
+`IronBee / Code Review Result (pull_request)`: the workflow's `name`, then the job's `name`. Its steps:
 
 1. **The workflow's scripts**, fetched from the workflow's own repository at the commit your file names.
 2. **Register**, for the last two triggers alone: the repository's project at IronBee (step 3).
@@ -240,9 +242,9 @@ self-hosted run and how.
 The console shows a registered repository as reviewed by its workflow, and its code-review page lists its pull
 requests and their runs, built from the counts IronBee is sent: no title, author or text, since none is sent.
 
-## 5. Make `IronBee review` a required check
+## 5. Make `Code Review Result` a required check
 
-Optional. Add `IronBee review` as a required status check of the branch. A gate, a licence problem or a run that could
+Optional. Add `Code Review Result` as a required status check of the branch. A gate, a licence problem or a run that could
 not start leaves a `neutral` check, which passes, so it never blocks a merge; open findings at or above the team's
 `mergeBlock` level do. Before you rely on it, read
 [what the check is worth](required-check.md#what-the-check-is-worth): the check is a team's own discipline made
@@ -321,4 +323,4 @@ and a private copy elsewhere cannot be read by the caller's `GITHUB_TOKEN`. Call
 - [Identity](identity.md): run the reviewer as your own GitHub App instead of the job token.
 - [The review file](review-file.md): adjust each task's model and effort, and a closed list of settings.
 - [Settings and rules](settings-and-rules.md): keep rules for all your repositories in a repository of your own.
-- [The `IronBee review` check](required-check.md): make it required, and know what it is worth.
+- [The `Code Review Result` check](required-check.md): make it required, and know what it is worth.

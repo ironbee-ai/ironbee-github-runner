@@ -4,7 +4,8 @@
 # shellcheck disable=SC2034  # the values set here are read by the scripts that source this file
 
 IRONBEE_SCRIPTS=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-IRONBEE_CHECK="IronBee review"                                  # the check's name: the gate a repository requires
+IRONBEE_CHECK="Code Review Result"                              # the check's name: the gate a repository requires, the only one written
+IRONBEE_CHECK_PRE="IronBee review"                              # the name the pre-releases wrote: a check of ours under it is read as ours
 IRONBEE_JOB_SLUG=github-actions                                 # the job token's App, which writes as github-actions[bot]
 IRONBEE_ALIAS=ironbee-ai                                        # what people call the reviewer under the job token
 export GH_NO_UPDATE_NOTIFIER=1 GH_PROMPT_DISABLED=1
@@ -103,13 +104,18 @@ api() {
   echo "$status"
 }
 
-# ours_checks HEAD OUT: the checks named IronBee review that our identity's App wrote on the commit, oldest first.
+# ours_checks HEAD OUT: the checks of ours on the commit, oldest first: named the check's name or the one the
+# pre-releases wrote, and written by our identity's App. GitHub filters a listing by one name, so one listing a name.
 ours_checks() {
-  local status
-  status=$(api --paginate GET "repos/$IRONBEE_REPO/commits/$1/check-runs?check_name=IronBee%20review&filter=all&per_page=100" "$IRONBEE_TMP/check-runs.json")
-  [ "$status" = 200 ] || fail 1 "GitHub did not list the checks on ${1:0:7} (HTTP $status)"
-  ijq -s --arg slug "$IRONBEE_SLUG" 'include "ironbee"; [.[] | .check_runs[]? | select(ours_check($slug))] | sort_by(.id)' \
-    "$IRONBEE_TMP/check-runs.json" > "$2"
+  local status name n=0
+  for name in "$IRONBEE_CHECK" "$IRONBEE_CHECK_PRE"; do
+    n=$((n + 1))
+    status=$(api --paginate GET "repos/$IRONBEE_REPO/commits/$1/check-runs?check_name=$(jq -rn --arg n "$name" '$n | @uri')&filter=all&per_page=100" "$IRONBEE_TMP/check-runs-$n.json")
+    [ "$status" = 200 ] || fail 1 "GitHub did not list the checks on ${1:0:7} (HTTP $status)"
+  done
+  ijq -s --arg slug "$IRONBEE_SLUG" --arg check "$IRONBEE_CHECK" --arg pre "$IRONBEE_CHECK_PRE" \
+    'include "ironbee"; [.[] | .check_runs[]? | select(ours_check($slug; [$check, $pre]))] | sort_by(.id)' \
+    "$IRONBEE_TMP"/check-runs-1.json "$IRONBEE_TMP"/check-runs-2.json > "$2"
 }
 
 # ours_reviews NUMBER HEAD OUT: the pull request's reviews of ours on the commit (our identity and our marker).

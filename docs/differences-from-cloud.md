@@ -5,6 +5,7 @@
 | Where the code is read | IronBee's cloud | your CI job |
 | Model | IronBee's | yours |
 | Comments' and the check's author | IronBee's GitHub App | `github-actions[bot]`, or your own GitHub App |
+| The check's name | `IronBee review` | `Code Review Result`: a branch rule moving from the cloud requires it instead ([The pre-releases' name](required-check.md)) |
 | Starts on | GitHub's webhooks | the workflow's events: a pull request opened or pushed, a comment |
 | Follow-up rounds, fixed and dropped tracking | yes | yes |
 | Summary, suggested fixes, diagrams, the Auto depth's note | yes | yes |

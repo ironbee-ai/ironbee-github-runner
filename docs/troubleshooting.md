@@ -2,7 +2,7 @@
 
 Where to look first:
 
-- **The `IronBee review` check.** When a pull request's event reviewed nothing, its head gets a `neutral` check titled
+- **The `Code Review Result` check.** When a pull request's event reviewed nothing, its head gets a `neutral` check titled
   "Not reviewed", with the reason in one sentence. It is written only on a head that has no check and no review of the
   reviewer's yet, so a conclusion already there is never replaced by it. A run that failed after it began to conclude
   a review, its check's write included, leaves no `neutral` either, so its head can have no check at all: a re-run of
@@ -64,7 +64,7 @@ A review someone asks for by a command passes every gate but the one for forks.
 
 ## The workflow's other steps wrote the check
 
-The workflow is one job, `Review`; besides the runner, two of its steps write a `neutral` check.
+The workflow is one job, `Job`; besides the runner, two of its steps write a `neutral` check.
 
 - **"The review did not run; the workflow's log says why. A re-run of the workflow, or `@ironbee-ai review`, reviews
   this head."**, from the fallback step: the review step did not succeed and could not say why itself. The image
@@ -158,7 +158,7 @@ writes `neutral`, and the next run reads them and goes on.
 
 **A pull request's head with no check at all.** A run cancelled before its job started runs none of its steps, the
 fallback's included: one cancelled by hand while it waited for the pull request's queue, or by GitHub when more than
-100 runs of the pull request were waiting, and a job whose machine was lost. Its head gets no `IronBee review`, and a
+100 runs of the pull request were waiting, and a job whose machine was lost. Its head gets no `Code Review Result`, and a
 required check waits for it: re-run the workflow, or ask `@ironbee-ai review`.
 
 ## Warnings in the log
