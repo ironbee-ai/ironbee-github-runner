@@ -156,7 +156,7 @@ jobs:
       queue: max
     # The release's image, by the digest the release writes here: the version the register step sends.
     env:
-      IRONBEE_IMAGE: docker.io/ironbeeai/ironbee-code-review-runner@sha256:20a9a201f8fd113d1108a42823c4fc2f5309de34b8f6f624d189847e0fcf281e
+      IRONBEE_IMAGE: docker.io/ironbeeai/ironbee-code-review-runner@sha256:7e8d8ba41201ab35d4908480398710a7559f52caea6b3aee48c3aa2fbef7e366
     steps:
       - name: Get the workflow's scripts
         id: scripts
