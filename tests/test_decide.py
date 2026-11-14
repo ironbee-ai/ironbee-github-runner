@@ -10,7 +10,8 @@ NOTHING: dict = {}
 
 class Decide(ScriptTest):
     def decide(self, name: str, payload: dict, **env):
-        e = {"IRONBEE_HAS_API_KEY": "true", "IRONBEE_HAS_APP_ID": "false", "IRONBEE_HAS_APP_PRIVATE_KEY": "false", "IRONBEE_APP_SLUG": ""}
+        e = {"IRONBEE_HAS_API_KEY": "true", "IRONBEE_HAS_REGISTRY_TOKEN": "true", "IRONBEE_HAS_APP_ID": "false", "IRONBEE_HAS_APP_PRIVATE_KEY": "false",
+             "IRONBEE_APP_SLUG": ""}
         e.update(env)
         return self.run_script("decide.sh", e, (name, payload))
 
@@ -57,9 +58,23 @@ class PullRequest(Decide):
         self.assertEqual(ran.outputs, {"write": "no_secrets", "write-head": HEAD, "write-pull-request": "7"})
         self.assertEqual(ran.calls, [])
 
-    def test_a_run_without_secrets_writes_nothing_under_the_app(self):
-        ran = self.decide("pull_request", event("pull_request.opened"), **self.under_app(IRONBEE_HAS_API_KEY="false", IRONBEE_HAS_APP_ID="false", IRONBEE_HAS_APP_PRIVATE_KEY="false"))
+    def test_a_run_without_the_registry_token_has_no_secrets_either(self):
+        ran = self.decide("pull_request", event("pull_request.opened"), IRONBEE_HAS_REGISTRY_TOKEN="false")
+        self.assertEqual(ran.outputs, {"write": "no_secrets", "write-head": HEAD, "write-pull-request": "7"})
+        ran = self.decide("pull_request", event("pull_request.opened"), IRONBEE_HAS_API_KEY="false", IRONBEE_HAS_REGISTRY_TOKEN="false")
+        self.assertEqual(ran.outputs["write"], "no_secrets")
+
+    def test_a_run_without_secrets_writes_nothing_under_the_app_without_its_key(self):
+        ran = self.decide("pull_request", event("pull_request.opened"), **self.under_app(IRONBEE_HAS_API_KEY="false", IRONBEE_HAS_REGISTRY_TOKEN="false",
+                                                                                         IRONBEE_HAS_APP_ID="false", IRONBEE_HAS_APP_PRIVATE_KEY="false"))
         self.assertEnds(ran)
+
+    def test_a_run_without_secrets_given_the_apps_key_asks_a_neutral_under_the_app(self):
+        # A Dependabot pull request whose secrets hold the App's id and key, and no API key.
+        ran = self.decide("pull_request", event("pull_request.opened"), **self.under_app(IRONBEE_HAS_API_KEY="false", IRONBEE_HAS_REGISTRY_TOKEN="false"))
+        self.assertEqual(ran.code, 0, ran.out + ran.err)
+        self.assertEqual(ran.outputs, {"write": "no_secrets", "write-head": HEAD, "write-pull-request": "7"})
+        self.assertEqual(ran.calls, [])
 
 
 class ReviewComment(Decide):
@@ -120,6 +135,11 @@ class ReviewComment(Decide):
 
     def test_an_edit_ends(self):
         self.assertEnds(self.decide("pull_request_review_comment", changed(self.reply, action="edited")))
+
+    def test_a_slug_in_another_case_still_finds_our_thread(self):
+        self.state["comments"]["5201"]["user"] = {"login": f"{APP_SLUG}[bot]", "type": "Bot"}
+        ran = self.decide("pull_request_review_comment", self.reply, **self.under_app(IRONBEE_APP_SLUG="Acme-Reviewer"))
+        self.assertEqual(ran.outputs.get("action"), "answer", ran.out + ran.err)
 
     def test_under_the_app_our_thread_is_the_apps(self):
         self.state["comments"]["5201"]["user"] = {"login": f"{APP_SLUG}[bot]", "type": "Bot"}
@@ -182,6 +202,7 @@ class IssueComment(Decide):
 
     def test_a_run_without_secrets_ends(self):
         self.assertEnds(self.decide("issue_comment", self.comment, IRONBEE_HAS_API_KEY="false"))
+        self.assertEnds(self.decide("issue_comment", self.comment, IRONBEE_HAS_REGISTRY_TOKEN="false"))
 
     def test_under_the_app_the_slug_is_the_only_name(self):
         ran = self.decide("issue_comment", self.says(f"@{APP_SLUG} review"), **self.under_app())
@@ -220,7 +241,7 @@ class MergeGroupAndOthers(Decide):
 
     def test_a_merge_group_under_the_app(self):
         self.assertEqual(self.decide("merge_group", event("merge_group.checks_requested"), **self.under_app()).outputs["write"], "merge_group")
-        no_key = self.under_app(IRONBEE_HAS_API_KEY="false", IRONBEE_HAS_APP_ID="false", IRONBEE_HAS_APP_PRIVATE_KEY="false")
+        no_key = self.under_app(IRONBEE_HAS_API_KEY="false", IRONBEE_HAS_REGISTRY_TOKEN="false", IRONBEE_HAS_APP_ID="false", IRONBEE_HAS_APP_PRIVATE_KEY="false")
         self.assertEnds(self.decide("merge_group", event("merge_group.checks_requested"), **no_key))
 
     def test_the_registering_events_end(self):

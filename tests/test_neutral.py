@@ -174,6 +174,13 @@ class UnderTheApp(Neutral):
         self.assertEqual({w["token"] for w in ran.writes()}, {APP_TOKEN})
         self.assertEqual({r["token"] for r in ran.calls if r["method"] == "GET"}, {JOB_TOKEN})
 
+    def test_a_slug_in_another_case_still_finds_our_review(self):
+        self.state["reviews"]["7"] = [self.review(login=APP_LOGIN)]
+        ran = self.neutral(**self.app(IRONBEE_APP_SLUG="Acme-Reviewer"))
+        self.assertEqual(ran.code, 0, ran.out + ran.err)
+        self.assertEqual(ran.writes(), [])
+        self.assertIn("holds a review of ours", ran.out)
+
     def test_ours_is_the_apps(self):
         seed_check(self.state, "failure", app="github-actions")                       # another workflow's, under the App
         self.state["reviews"]["7"] = [self.review(login=JOB_LOGIN)]

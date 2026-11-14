@@ -2,13 +2,15 @@
 # Job 1: what a pull request's event asks of the reviewer, decided before any image is pulled and outside the pull
 # request's queue. It ends what can never run or may not be asked: a fork's event, a bot's comment, a run without the
 # secrets, a comment not addressed to us, a question on a thread that is not ours or from someone who does not count, a
-# command from someone who may not write. A merge queue's group, and a pull request's run without the secrets under the
-# job token, get a neutral check instead (neutral.sh writes it).
+# command from someone who may not write. A merge queue's group, and a pull request's run without the secrets, get a
+# neutral check instead where there is a key to write it with (neutral.sh writes it).
 #
 #   GITHUB_EVENT_NAME, GITHUB_EVENT_PATH, GITHUB_REPOSITORY   the event, as GitHub hands it to the job
 #   GH_TOKEN                     the job's token, for the reads: a thread's first comment, a pull request, a permission
 #   IRONBEE_APP_SLUG             the customer's own App's slug, when the reviewer writes as that App
-#   IRONBEE_HAS_API_KEY, IRONBEE_HAS_APP_ID, IRONBEE_HAS_APP_PRIVATE_KEY   whether each secret is set: true or false
+#   IRONBEE_HAS_API_KEY, IRONBEE_HAS_REGISTRY_TOKEN, IRONBEE_HAS_APP_ID, IRONBEE_HAS_APP_PRIVATE_KEY
+#                                whether each secret is set: true or false. A run has its secrets when the API key and the
+#                                registry token are both set; without them the image could not be pulled or start.
 #
 # GITHUB_OUTPUT gets, for job 2: action (review, answer, respond, retract), pull-request, comment-id, and for job 3 the
 # head a pull request's event names; for neutral.sh: write (merge_group, no_secrets), write-head, write-pull-request.
@@ -24,19 +26,23 @@ event=${GITHUB_EVENT_NAME:-}
 repository
 identity
 
-# The App's key is the secrets' to give: a run without the secrets has none to write with.
+secrets=false
+if [ "${IRONBEE_HAS_API_KEY:-}" = true ] && [ "${IRONBEE_HAS_REGISTRY_TOKEN:-}" = true ]; then
+  secrets=true
+fi
+
+# The App's key is the secrets' to give: a run without them has none to write with, unless they give it the App's.
 app_key=true
 if [ -n "${IRONBEE_APP_SLUG:-}" ]; then
   if [ "${IRONBEE_HAS_APP_ID:-}" != true ] || [ "${IRONBEE_HAS_APP_PRIVATE_KEY:-}" != true ]; then
     app_key=false
-    if [ "${IRONBEE_HAS_API_KEY:-}" = true ]; then
+    if [ "$secrets" = true ]; then
       fail 2 "app-slug is given without app-id and app-private-key: the customer's own App needs all three"
     fi
   fi
 elif [ "${IRONBEE_HAS_APP_ID:-}" = true ] || [ "${IRONBEE_HAS_APP_PRIVATE_KEY:-}" = true ]; then
   fail 2 "app-id and app-private-key are given without app-slug: the customer's own App needs all three"
 fi
-secrets=${IRONBEE_HAS_API_KEY:-false}
 
 ev() {
   local filter=$1
@@ -84,7 +90,7 @@ case $event in
       end "#$pr comes from a fork, which is not reviewed"
     fi
     if [ "$secrets" != true ]; then
-      if [ -n "${IRONBEE_APP_SLUG:-}" ]; then
+      if [ "$app_key" != true ]; then
         end "#$pr's run was given no secrets, and without the App's key no check can be written"
       fi
       say "IronBee: #$pr's run was given no secrets: neutral on ${head:0:7}"

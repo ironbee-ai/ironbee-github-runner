@@ -7,7 +7,7 @@
 #   IRONBEE_API_KEY              the account's API key: sent as X-API-Key, through curl's standard input, never as an argument
 #   IRONBEE_RUNNER_VERSION       the runner's version, MAJOR.MINOR.PATCH: the workflow's release
 #   GITHUB_REPOSITORY            the repository, when no OWNER/NAME is given
-#   IRONBEE_API_URL              IronBee's API; https://api.service.ironbee.ai when unset
+#   IRONBEE_API_URL              IronBee's API; https://api.service.ironbee.ai when unset or empty
 #
 # The log says the project and whether it was made, or which case left the repository without one, and of the licence
 # only the warnings a review's run prints: no count, limit or end date of the contract, since a public repository's log

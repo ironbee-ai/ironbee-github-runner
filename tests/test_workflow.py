@@ -18,9 +18,11 @@ EXAMPLE = ROOT / "examples" / "ironbee-review.yml"
 
 # Every input and secret, by the names customers write; a major version keeps them all.
 INPUTS = {"model-provider", "model-url", "model-name", "model-ca-certificate", "model-prefix", "model-max-output", "aws-region",
-          "runs-on", "knowledge-repository", "knowledge-ref", "ignore-paths", "target-branches", "skip-labels", "skip-title-keywords", "app-slug"}
+          "runs-on", "knowledge-repository", "knowledge-ref", "ignore-paths", "target-branches", "skip-labels", "skip-title-keywords", "app-slug",
+          "ironbee-api-url"}
 SECRETS = {"ironbee-api-key", "registry-token", "model-key", "model-headers", "knowledge-token", "jev-key", "app-id", "app-private-key"}
-REQUIRED = {"model-provider", "ironbee-api-key", "registry-token"}
+REQUIRED = {"model-provider"}                               # the two secrets every review needs are checked by job 1, so a run without secrets still reaches it
+NEEDED_SECRETS = {"ironbee-api-key", "registry-token"}
 
 # The variable each becomes in the review job's container: the runner's own list of what it reads.
 VARIABLES = {"model-provider": "IRONBEE_MODEL_PROVIDER", "model-url": "IRONBEE_MODEL_URL", "model-key": "IRONBEE_MODEL_KEY",
@@ -29,7 +31,7 @@ VARIABLES = {"model-provider": "IRONBEE_MODEL_PROVIDER", "model-url": "IRONBEE_M
              "jev-key": "IRONBEE_JEV_KEY", "ironbee-api-key": "IRONBEE_API_KEY", "knowledge-repository": "IRONBEE_KNOWLEDGE_REPOSITORY",
              "knowledge-ref": "IRONBEE_KNOWLEDGE_REF", "knowledge-token": "IRONBEE_KNOWLEDGE_TOKEN", "ignore-paths": "IRONBEE_IGNORE_PATHS",
              "target-branches": "IRONBEE_TARGET_BRANCHES", "skip-labels": "IRONBEE_SKIP_LABELS", "skip-title-keywords": "IRONBEE_SKIP_TITLE_KEYWORDS",
-             "app-id": "IRONBEE_APP_ID", "app-private-key": "IRONBEE_APP_PRIVATE_KEY", "app-slug": "IRONBEE_APP_SLUG"}
+             "app-id": "IRONBEE_APP_ID", "app-private-key": "IRONBEE_APP_PRIVATE_KEY", "app-slug": "IRONBEE_APP_SLUG", "ironbee-api-url": "IRONBEE_API_URL"}
 HANDED = {"GITHUB_TOKEN": "${{ github.token }}", "IRONBEE_ACTION": "${{ needs.decide.outputs.action }}",
           "IRONBEE_PULL_REQUEST": "${{ needs.decide.outputs.pull-request }}", "IRONBEE_COMMENT_ID": "${{ needs.decide.outputs.comment-id }}"}
 
@@ -133,8 +135,21 @@ class Workflow(unittest.TestCase):
     def test_job_1_learns_whether_secrets_are_set_never_their_values(self):
         decide = next(s for s in self.jobs["decide"]["steps"] if s.get("id") == "decide")
         self.assertEqual(decide["env"]["IRONBEE_HAS_API_KEY"], "${{ secrets.ironbee-api-key != '' }}")
+        self.assertEqual(decide["env"]["IRONBEE_HAS_REGISTRY_TOKEN"], "${{ secrets.registry-token != '' }}")
         self.assertEqual(decide["env"]["IRONBEE_HAS_APP_ID"], "${{ secrets.app-id != '' }}")
         self.assertEqual(decide["env"]["IRONBEE_HAS_APP_PRIVATE_KEY"], "${{ secrets.app-private-key != '' }}")
+
+    def test_the_secrets_every_review_needs_say_that_job_1_checks_them(self):
+        for name in NEEDED_SECRETS:
+            self.assertFalse(self.call["secrets"][name]["required"])
+            self.assertIn("the decide job checks that it is set", self.call["secrets"][name]["description"])
+
+    def test_the_api_address_reaches_the_runner_and_the_register_job_alone(self):
+        self.assertEqual(self.call["inputs"]["ironbee-api-url"]["default"], "")
+        self.assertEqual(self.jobs["review"]["steps"][-1]["env"]["IRONBEE_API_URL"], "${{ inputs.ironbee-api-url }}")
+        self.assertEqual(self.jobs["register"]["steps"][-1]["env"]["IRONBEE_API_URL"], "${{ inputs.ironbee-api-url }}")
+        places = {(where[1], where[-2]) for where, text in strings(self.wf) if where[0] == "jobs" and "inputs.ironbee-api-url" in text}
+        self.assertEqual(places, {("review", "env"), ("register", "env")})
 
     def test_the_apps_token_is_minted_only_where_a_check_is_written(self):
         for name in ("decide", "fallback"):
@@ -206,7 +221,7 @@ class CustomersFile(unittest.TestCase):
     def test_the_call(self):
         [job] = self.wf["jobs"].values()
         self.assertRegex(job["uses"], r"^ironbee-ai/ironbee-github-runner/\.github/workflows/code-review\.yml@v\d+\.\d+\.\d+$")
-        self.assertTrue(REQUIRED - {"model-provider"} <= set(job["secrets"]) <= SECRETS)
+        self.assertTrue(NEEDED_SECRETS <= set(job["secrets"]) <= SECRETS)
         self.assertTrue({"model-provider"} <= set(job["with"]) <= INPUTS)
 
 

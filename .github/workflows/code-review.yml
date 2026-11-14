@@ -87,13 +87,20 @@ on:
         type: string
         required: false
         default: ""
+      ironbee-api-url:
+        description: "IronBee's API address; the public API when empty"
+        type: string
+        required: false
+        default: ""
     secrets:
+      # Needed for every review, but not required here: a run GitHub gives no secrets (a Dependabot pull request's) must
+      # still reach the decide job, which checks that both are set and otherwise writes the neutral check.
       ironbee-api-key:
-        description: "The IronBee account's API key"
-        required: true
+        description: "The IronBee account's API key; needed, and the decide job checks that it is set"
+        required: false
       registry-token:
-        description: "The read-only token that pulls the runner's image"
-        required: true
+        description: "The read-only token that pulls the runner's image; needed, and the decide job checks that it is set"
+        required: false
       model-key:
         description: "The model's key; optional with model-url"
         required: false
@@ -138,6 +145,7 @@ jobs:
         run: bash .ironbee-github-runner/scripts/register.sh
         env:
           IRONBEE_API_KEY: ${{ secrets.ironbee-api-key }}
+          IRONBEE_API_URL: ${{ inputs.ironbee-api-url }}        # empty: the public API
           IRONBEE_RUNNER_VERSION: 1.0.0                         # the release's version: its image's, named in the review job
 
   decide:
@@ -172,6 +180,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IRONBEE_APP_SLUG: ${{ inputs.app-slug }}
           IRONBEE_HAS_API_KEY: ${{ secrets.ironbee-api-key != '' }}
+          IRONBEE_HAS_REGISTRY_TOKEN: ${{ secrets.registry-token != '' }}
           IRONBEE_HAS_APP_ID: ${{ secrets.app-id != '' }}
           IRONBEE_HAS_APP_PRIVATE_KEY: ${{ secrets.app-private-key != '' }}
       # Under the customer's own App, its key is used here alone, for a token that may write checks and nothing else.
@@ -231,6 +240,7 @@ jobs:
           AWS_REGION: ${{ inputs.aws-region }}
           IRONBEE_JEV_KEY: ${{ secrets.jev-key }}
           IRONBEE_API_KEY: ${{ secrets.ironbee-api-key }}
+          IRONBEE_API_URL: ${{ inputs.ironbee-api-url }}
           IRONBEE_KNOWLEDGE_REPOSITORY: ${{ inputs.knowledge-repository }}
           IRONBEE_KNOWLEDGE_REF: ${{ inputs.knowledge-ref }}
           IRONBEE_KNOWLEDGE_TOKEN: ${{ secrets.knowledge-token }}

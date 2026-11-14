@@ -40,12 +40,14 @@ is_sha() {
 }
 
 # The identity the reviewer writes as, from IRONBEE_APP_SLUG: the customer's own App when it is set, else the job's
-# token. Sets IRONBEE_SLUG (whose checks are ours), IRONBEE_LOGIN (whose texts are ours) and IRONBEE_MENTION.
+# token. Sets IRONBEE_SLUG (whose checks are ours), IRONBEE_LOGIN (whose texts are ours) and IRONBEE_MENTION. An App's
+# slug is lowercase on GitHub, its bot's login with it, whatever case the workflow gives it in.
 identity() {
   local slug=${IRONBEE_APP_SLUG:-}
   slug=${slug#@}
   if [ -n "$slug" ]; then
     case $slug in *[!A-Za-z0-9-]*) fail 2 "app-slug is no GitHub App's slug" ;; esac
+    slug=$(printf '%s' "$slug" | tr '[:upper:]' '[:lower:]')
     IRONBEE_SLUG=$slug
     IRONBEE_LOGIN="$slug[bot]"
     IRONBEE_MENTION="@$slug"

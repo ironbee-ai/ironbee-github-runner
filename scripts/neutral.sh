@@ -39,7 +39,7 @@ case ${IRONBEE_REASON:-} in
     summary="A merge queue's group is not reviewed again: IronBee reviews each pull request on the pull request itself." ;;
   no_secrets)
     title="Not reviewed"
-    summary="This run of the workflow was given none of the repository's secrets, as GitHub does for a pull request Dependabot opens unless Dependabot is given them, so IronBee did not review it." ;;
+    summary="This run of the workflow lacked the \`ironbee-api-key\` or \`registry-token\` secret, so IronBee did not review it. GitHub gives a pull request Dependabot opens none of the repository's secrets unless Dependabot is given them." ;;
   not_run)
     title="Not reviewed"
     summary="The review did not run; the workflow's log says why. A re-run of the workflow, or \`$IRONBEE_MENTION review\`, reviews this head." ;;

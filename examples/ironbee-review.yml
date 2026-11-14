@@ -27,6 +27,7 @@ jobs:
       # knowledge-repository: the rules repository (owner/name)
       # ignore-paths, target-branches, skip-labels, skip-title-keywords: for a repository without a project
       # app-slug: the slug of your own GitHub App, when the reviewer runs as that App
+      # ironbee-api-url: IronBee's API address; the public API when empty
     secrets:
       ironbee-api-key: ${{ secrets.IRONBEE_API_KEY }}
       registry-token: ${{ secrets.IRONBEE_REGISTRY_TOKEN }}
