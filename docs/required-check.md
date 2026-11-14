@@ -3,11 +3,14 @@
 Each head commit of a pull request gets at most one check run named `Code Review Result`, written with the reviewer's
 identity ([Identity](identity.md)). It is the merge gate: you can make it a required check. The workflow's own job,
 `Job`, shows beside it as `<your workflow> / <your job> / Job`. With the [setup](setup.md)'s file a pull request
-shows `IronBee / Code Review Result` and `IronBee / Code Review / Job`. The job's result is green unless the run
-itself failed, and it is not the check to require.
+shows `IronBee / Code Review / Job`, and usually `IronBee / Code Review Result`: GitHub places a check the workflow's
+token writes, and one your own GitHub App writes shows under the App's name. Require the check by its name alone,
+`Code Review Result`. The job's result is green unless the run itself failed, and it is not the check to require.
 
 **Its details link.** A review's conclusion links to the review the reviewer posted on that head (or the short review
-below): GitHub's "Details", and the "Resolve" an `action_required` shows, open it. A `neutral` written because nothing
+below). Its text opens with that link ("The review on this commit"). Under your own GitHub App, GitHub's "Details",
+and the "Resolve" an `action_required` shows, open the review too; with the workflow's token GitHub keeps them on the
+check's own page, where the text's link is. A `neutral` written because nothing
 was reviewed links to no review; one a retract turns from a conclusion keeps the link it had.
 
 **The pre-releases' name.** The pre-releases (`v1.0.0-rc.1` to `-rc.3`) named the check `IronBee review`. A check of

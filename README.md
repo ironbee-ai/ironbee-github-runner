@@ -65,8 +65,8 @@ for the image. From your side: a key for your model.
 3. Commit it. Pushed straight to the default branch, it registers the repository in the IronBee console before any
    pull request. Added by a pull request, that pull request is the first one reviewed.
 4. Optionally, make `Code Review Result` a required check. Read [The `Code Review Result` check](docs/required-check.md)
-   first: it says what the check is worth. A pull request shows it as `IronBee / Code Review Result`, beside the
-   workflow's job as `IronBee / Code Review / Job`.
+   first: it says what the check is worth. A pull request usually shows it as `IronBee / Code Review Result`, beside
+   the workflow's job as `IronBee / Code Review / Job`; the name to require is `Code Review Result`.
 
 The [setup guide](docs/setup.md) explains each step and every input.
 

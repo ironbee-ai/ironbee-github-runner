@@ -87,8 +87,10 @@ What each part does:
   set. `model-key` is needed at a model provider's own endpoint; every other one only for what it names.
 
 The reusable workflow is one job, `Job`, so a pull request's checks show it once, beside the `Code Review Result`
-check it writes. With the file above they read `IronBee / Code Review / Job (pull_request)` and
-`IronBee / Code Review Result (pull_request)`: the workflow's `name`, then the job's `name`. Its steps:
+check it writes. With the file above the job reads `IronBee / Code Review / Job (pull_request)`: the workflow's
+`name`, then the job's `name`. The check is named `Code Review Result`; written with the workflow's token it usually
+shows under the workflow, as `IronBee / Code Review Result (pull_request)` (GitHub picks its place), and under your
+own GitHub App under the App's name. Its steps:
 
 1. **The workflow's scripts**, fetched from the workflow's own repository at the commit your file names.
 2. **Register**, for the last two triggers alone: the repository's project at IronBee (step 3).
