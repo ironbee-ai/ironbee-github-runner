@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The register job: the repository's project at IronBee got or made (PUT /v1/code-review-repositories), so that the
+# The register step: the repository's project at IronBee got or made (PUT /v1/code-review-repositories), so that the
 # repository and its settings are in IronBee's console before its first pull request. It sends the repository's path
 # and the runner's version and reads nothing of the event; it writes nothing to GitHub. A person or a script can run it
 # too, for any repository: scripts/register.sh [OWNER/NAME].

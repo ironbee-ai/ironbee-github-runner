@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
-"""A stand-in for docker in the release's tests: a registry and a daemon held in the JSON file $STUB_DOCKER_STATE, each
-call's arguments recorded in $STUB_DOCKER_CALLS (one JSON list a line). No network, and no image ever runs.
+"""A stand-in for docker in the release's and the review step's tests: a registry and a daemon held in the JSON file
+$STUB_DOCKER_STATE, each call's arguments recorded in $STUB_DOCKER_CALLS (one JSON list a line). No network, and no
+image ever runs.
 
 The state: arch (the daemon's architecture); manifests ({image@digest: what `imagetools inspect --raw` prints}); tags
 ({image:tag: the digest it names}); images ({image@digest: {os, architecture, version}}: a platform's image, which a
-pull fetches and whose runner reports `version`); pulled (the images pulled so far)."""
+pull fetches and whose runner reports `version`); pulled (the images pulled so far). For the review step: security
+(what `docker info` gives as the daemon's security options; no_daemon: it reaches none), token (the registry token a pull must find for Docker Hub
+in $DOCKER_CONFIG/config.json, as user:token; a pull is refused without it), pulls ([{ref, config, auth, helpers, pid}]:
+the configuration a pull read, the user:token it found, any credential helper it named, its process), pull_sleeps (seconds a pull
+takes); a run's container: runs ([{args, env, pid}], `env` what its `-e` gave it, the values of the names it inherits
+included, `pid` the process docker ran as), concluding (what the runner writes to its outputs file, when set), exit
+(its exit code), left (true: the container is still there after the run, as when docker is killed); containers (the
+ids still there), stopped (the ids stopped)."""
+import base64
 import json
 import os
 import sys
+import time
 
 
 def fail(message: str) -> int:
@@ -18,6 +28,10 @@ def ref_of(args: list) -> str:
     """The one argument that is no option and no option's value."""
     refs = [a for i, a in enumerate(args) if not a.startswith("-") and not (i and args[i - 1] in ("--format", "-f"))]
     return refs[0]
+
+
+def save(path: str, state: dict) -> None:
+    with open(path, "w") as f: json.dump(state, f)
 
 
 def main(argv: list) -> int:
@@ -34,12 +48,32 @@ def main(argv: list) -> int:
         digest = state["tags"].get(ref) or (ref.split("@", 1)[1] if ref in state["manifests"] else None)
         if digest is None: return fail(f"ERROR: {ref}: not found")
         print(json.dumps({"mediaType": "application/vnd.oci.image.index.v1+json", "digest": digest})); return 0
+    if argv[:1] == ["info"]:
+        if state.get("no_daemon"): return fail("Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?")
+        print(json.dumps(state.get("security", ["name=seccomp,profile=builtin"]))); return 0
     if argv[:1] == ["pull"]:
-        ref = argv[-1]
+        ref = argv[-1]; config = os.environ.get("DOCKER_CONFIG"); auth = None; helpers = None
+        if config and os.path.exists(os.path.join(config, "config.json")):
+            held = json.load(open(os.path.join(config, "config.json")))
+            entry = held.get("auths", {}).get("https://index.docker.io/v1/", {})
+            auth = base64.b64decode(entry["auth"]).decode() if "auth" in entry else None
+            helpers = [held[k] for k in ("credsStore", "credHelpers") if k in held] or None
+        state.setdefault("pulls", []).append({"ref": ref, "config": config, "auth": auth, "helpers": helpers, "pid": os.getpid()}); save(path, state)
+        time.sleep(state.get("pull_sleeps", 0))
+        if state.get("token") is not None and auth != f"ironbeeai:{state['token']}":
+            return fail("Error response from daemon: unauthorized: incorrect username or password")
         if ref not in state["images"]: return fail(f"Error response from daemon: manifest for {ref} not found")
         state.setdefault("pulled", []).append(ref)
-        with open(path, "w") as f: json.dump(state, f)
+        save(path, state)
         print(ref); return 0
+    if argv[:2] == ["container", "inspect"]:
+        return 0 if argv[-1] in state.get("containers", []) else fail(f"Error: No such container: {argv[-1]}")
+    if argv[:1] in (["stop"], ["rm"]):
+        cid = argv[-1]
+        if cid not in state.get("containers", []): return fail(f"Error response from daemon: No such container: {cid}")
+        if argv[0] == "stop": state.setdefault("stopped", []).append(cid)
+        else: state["containers"].remove(cid)
+        save(path, state); return 0
     if argv[:2] == ["image", "inspect"]:
         ref = argv[-1]
         if ref not in state.get("pulled", []): return fail(f"Error response from daemon: No such image: {ref}")
@@ -47,7 +81,25 @@ def main(argv: list) -> int:
     if argv[:1] == ["run"]:
         ref = next(a for a in argv if "@sha256:" in a)
         if ref not in state.get("pulled", []): return fail(f"docker: Error response from daemon: No such image: {ref}")
-        print(state["images"][ref]["version"]); return 0
+        env = {}
+        for i, a in enumerate(argv[:-1]):
+            if a in ("-e", "--env"):
+                name, eq, value = argv[i + 1].partition("=")
+                if eq: env[name] = value
+                elif name in os.environ: env[name] = os.environ[name]
+        state.setdefault("runs", []).append({"args": argv, "env": env, "pid": os.getpid()})
+        if "--cidfile" in argv:
+            cid = "c0ffee%058d" % len(state["runs"]); open(argv[argv.index("--cidfile") + 1], "w").write(cid)
+            if state.get("left"): state.setdefault("containers", []).append(cid)
+        if state.get("concluding") is not None:
+            mounts = {}
+            for i, a in enumerate(argv[:-1]):
+                if a == "--mount":
+                    fields = dict(f.split("=", 1) for f in argv[i + 1].split(",") if "=" in f)
+                    mounts[fields["target"]] = fields["source"]
+            with open(mounts[env["GITHUB_OUTPUT"]], "a") as f: f.write(f"concluding={state['concluding']}\n")
+        save(path, state)
+        print(state["images"][ref]["version"]); return state.get("exit", 0)
     return fail(f"stub docker: {' '.join(argv[:3])} is not stubbed")
 
 

@@ -1,4 +1,4 @@
-"""The neutral check of jobs 1 and 3 (scripts/neutral.sh): the check's rule (no check and no review of ours on the commit),
+"""The neutral check of the decide step and the fallback (scripts/neutral.sh): the check's rule (no check and no review of ours on the commit),
 and the second look that turns the neutral into a copy of a review's conclusion found beside it."""
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ class TheRule(Neutral):
                                  ("GET", f"repos/acme/widgets/commits/{HEAD}/check-runs?check_name=IronBee%20review&filter=all&per_page=100")])
 
     def test_a_check_of_ours_is_left_as_it_is(self):
-        for conclusion in ("failure", "success", "neutral"):
+        for conclusion in ("action_required", "failure", "success", "neutral"):          # failure: a released pre-release's blocking one
             with self.subTest(conclusion):
                 self.state["checks"] = []
                 seed_check(self.state, conclusion)
@@ -61,7 +61,7 @@ class TheRule(Neutral):
         self.assertIn("holds a review of ours", ran.out)
 
     def test_a_heads_short_review_of_ours_is_left_as_it_is(self):
-        """The short review the runner posts on a head whose round posted none, before it writes a failure there: ours on
+        """The short review the runner posts on a head whose round posted none, before it writes a blocking conclusion there: ours on
         that head, so a run killed before its check leaves no neutral, with or without its `concluding` output."""
         body = marked(f"## IronBee Code Review\n\nNo new change was read on `{HEAD[:7]}`: **2 findings** stay open.", "held:widgets__7")
         self.state["reviews"]["7"] = [self.review(body=body)]
@@ -106,12 +106,12 @@ class TheRule(Neutral):
 
     def test_a_reviews_conclusion_found_after_a_failed_create_stays(self):
         self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": 503, "times": 1, "made": True}]
-        self.state["on_create"] = {"rewrite": {"conclusion": "failure", "output": {"title": "1 blocking", "summary": "s"}}}
+        self.state["on_create"] = {"rewrite": {"conclusion": "action_required", "output": {"title": "1 blocking", "summary": "s"}}}
         ran = self.neutral()
         self.assertEqual(ran.code, 0, ran.out + ran.err)
-        self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["failure"])
+        self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["action_required"])
         self.assertEqual([w["method"] for w in ran.writes()], ["POST"])
-        self.assertIn("already says failure", ran.out)
+        self.assertIn("already says action_required", ran.out)
 
     def test_a_create_never_answered_and_never_made_fails_after_three(self):
         self.state["fail"] = [{"method": "POST", "path": "repos/acme/widgets/check-runs", "status": 0, "times": 3}]
@@ -147,7 +147,7 @@ class TheRule(Neutral):
 
 
 class TheReviewConcluding(Neutral):
-    """Job 3 after a review job that said it began to conclude on a head (its `concluding` output) and then stopped."""
+    """The fallback after a review step that said it began to conclude on a head (its `concluding` output) and then stopped."""
 
     def test_the_head_it_was_concluding_on_gets_nothing(self):
         ran = self.neutral(IRONBEE_CONCLUDING=HEAD)                                   # no check, no review of ours: still nothing
@@ -170,13 +170,13 @@ class TheReviewConcluding(Neutral):
 
 class TheSecondLook(Neutral):
     def test_a_reviews_conclusion_written_just_before_ours_is_copied_onto_ours(self):
-        self.state["on_create"] = {"before": [check("failure", title="1 blocking · 3 open", summary="Concluded at `2222222` from this pull request's findings.")]}
+        self.state["on_create"] = {"before": [check("action_required", title="1 blocking · 3 open", summary="Concluded at `2222222` from this pull request's findings.")]}
         ran = self.neutral()
         self.assertEqual(ran.code, 0, ran.out + ran.err)
         review, own = self.ours(ran)
-        self.assertEqual(own["conclusion"], "failure")
+        self.assertEqual(own["conclusion"], "action_required")
         self.assertEqual(own["output"], {"title": "1 blocking · 3 open", "summary": "Concluded at `2222222` from this pull request's findings."})
-        self.assertEqual(review["conclusion"], "failure")
+        self.assertEqual(review["conclusion"], "action_required")
         self.assertEqual([(w["method"], w["path"]) for w in ran.writes()], [("POST", "repos/acme/widgets/check-runs"), ("PATCH", f"repos/acme/widgets/check-runs/{own['id']}")])
         self.assertIn("copied", ran.out)
 
@@ -186,16 +186,28 @@ class TheSecondLook(Neutral):
         self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["success", "success"])
 
     def test_the_newest_of_several_conclusions_is_copied(self):
-        self.state["on_create"] = {"before": [check("success", title="old"), check("failure", title="new")]}
+        self.state["on_create"] = {"before": [check("success", title="old"), check("action_required", title="new")]}
         ran = self.neutral()
-        self.assertEqual([(c["conclusion"], c["output"]["title"]) for c in self.ours(ran)][-1], ("failure", "new"))
+        self.assertEqual([(c["conclusion"], c["output"]["title"]) for c in self.ours(ran)][-1], ("action_required", "new"))
 
     def test_a_neutral_already_rewritten_by_the_review_is_left(self):
-        self.state["on_create"] = {"rewrite": {"conclusion": "failure", "output": {"title": "1 blocking", "summary": "s"}}}
+        self.state["on_create"] = {"rewrite": {"conclusion": "action_required", "output": {"title": "1 blocking", "summary": "s"}}}
         ran = self.neutral()
         self.assertEqual(ran.code, 0, ran.err)
         self.assertEqual([w["method"] for w in ran.writes()], ["POST"])
         self.assertIn("a review rewrote it", ran.out)
+
+    def test_a_released_pre_releases_failure_is_a_reviews_conclusion_too(self):
+        """Released pre-releases wrote failure where a review now writes action_required: it is copied as action_required,
+        since nothing of this release writes failure, and it ends the look."""
+        self.state["on_create"] = {"before": [check("failure", title="1 blocking")]}
+        ran = self.neutral()
+        self.assertEqual([(c["conclusion"], c["output"]["title"]) for c in self.ours(ran)], [("failure", "1 blocking"), ("action_required", "1 blocking")])
+        self.assertIn("a review's conclusion of ours (action_required) was beside it", ran.out)
+        self.state["on_create"] = {"rewrite": {"conclusion": "failure", "output": {"title": "1 blocking", "summary": "s"}}}
+        ran = self.neutral()
+        self.assertEqual([w["method"] for w in ran.writes()], ["POST"])
+        self.assertIn("already says failure: a review rewrote it", ran.out)
 
     def test_a_neutral_beside_it_is_no_conclusion(self):
         self.state["on_create"] = {"before": [check("neutral", title="Retracted")]}
@@ -255,9 +267,9 @@ class UnderTheApp(Neutral):
         self.assertEqual(self.neutral(**self.app()).writes(), [])
 
     def test_the_second_look_copies_the_apps_conclusion(self):
-        self.state["on_create"] = {"before": [check("failure", app=APP_SLUG, title="2 blocking")]}
+        self.state["on_create"] = {"before": [check("action_required", app=APP_SLUG, title="2 blocking")]}
         ran = self.neutral(**self.app())
-        self.assertEqual([c["conclusion"] for c in self.ours(ran, app=APP_SLUG)], ["failure", "failure"])
+        self.assertEqual([c["conclusion"] for c in self.ours(ran, app=APP_SLUG)], ["action_required", "action_required"])
         self.assertEqual({w["token"] for w in ran.writes()}, {APP_TOKEN})
 
     def test_no_token_from_the_app_is_a_configuration_error(self):

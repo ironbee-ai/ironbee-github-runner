@@ -18,7 +18,7 @@ image by digest, and its tag is never moved, so the digest you verify is the one
 ## The digest
 
 The image's digest is the one the workflow file of your release names, in `.github/workflows/code-review.yml` of this
-repository at that release's tag. It is the digest of the image's index, which covers both of its platforms,
+repository at that release's tag: its `IRONBEE_IMAGE` line (`image:` in `v1.0.0-rc.1` and `-rc.2`). It is the digest of the image's index, which covers both of its platforms,
 `linux/amd64` and `linux/arm64`.
 
 ## Verify

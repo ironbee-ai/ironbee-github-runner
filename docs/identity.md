@@ -8,7 +8,7 @@ it as a GitHub App of your own instead. IronBee holds neither credential.
 |---|---|---|
 | What you set up | nothing | a GitHub App, installed on the repository; its id and private key as the secrets `app-id` and `app-private-key`, and its slug as the input `app-slug` |
 | The reviewer's token | the job's own; it ends with the job | minted by the reviewer from the App's key, and again near the end of its hour |
-| The check's token | the job's, in all three jobs that write the check | an installation token of the App with `checks: write`, minted in the step that writes the check and nowhere before it |
+| The check's token | the job's, in every step that writes the check | an installation token of the App with `checks: write`, minted in the step that writes the check and nowhere before it |
 | Permissions | `contents: read`, `pull-requests: write`, `checks: write`, `issues: read`, in the workflow file | the same, on the App: Contents read, Pull requests read and write, Checks read and write, Issues read |
 | Comments and the check appear as | `github-actions[bot]`, "GitHub Actions" | your App |
 | People address it as | `@ironbee-ai`: text the reviewer matches, the only name it answers to, and the name its own texts use | `@<your App's slug>`, a real mention |
@@ -47,11 +47,11 @@ reviewer tells its own texts by its marker beside the author, and looks only at 
          app-private-key: ${{ secrets.IRONBEE_APP_PRIVATE_KEY }}
    ```
 
-The three go together. The workflow's first job fails, and writes no check, when `app-id` or `app-private-key` is
+The three go together. The workflow's decide step fails, and writes no check, when `app-id` or `app-private-key` is
 given without the slug, and when the slug is given without both of them in a run that has its secrets; a run
 without its secrets, such as a Dependabot pull request's, then ends quietly with no check
 ([Troubleshooting](troubleshooting.md#your-own-apps-three-inputs)).
-The slug is an input because the workflow's first job must know the name people call the reviewer by before it may
+The slug is an input because the workflow's decide step must know the name people call the reviewer by before it may
 hold the key. The runner checks it against the App, and a slug that is not the App's is refused as a configuration
 error.
 

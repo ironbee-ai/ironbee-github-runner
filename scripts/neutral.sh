@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# The neutral check of jobs 1 and 3, by the check's rule: written on a commit only when that commit holds no check of
-# ours and the pull request no review of ours on it, so a neutral never covers a review's conclusion. After its write
-# it looks again: when a review's conclusion of ours sits beside it on that commit (a review that ran meanwhile), the
-# neutral becomes a copy of that conclusion, never one of its own.
+# The neutral check of the decide step and of the fallback, by the check's rule: written on a commit only when that
+# commit holds no check of ours and the pull request no review of ours on it, so a neutral never covers a review's
+# conclusion. After its write it looks again: when a review's conclusion of ours sits beside it on that commit (a
+# review that ran meanwhile), the neutral becomes a copy of that conclusion, never one of its own.
 #
 #   GITHUB_REPOSITORY            the repository
 #   GH_TOKEN                     the job's token, for the reads
@@ -12,10 +12,10 @@
 #   IRONBEE_PULL_REQUEST         its pull request, whose reviews are read; none for a merge queue's group
 #   IRONBEE_REASON               merge_group (a merge queue's group), no_secrets (a run given no secrets), not_run (the
 #                                review did not run: the image, the container, a job killed or cancelled)
-#   IRONBEE_CONCLUDING           the head the review job began to conclude a review on, when it said so before it
-#                                stopped: that head gets no neutral. A failure on a head that holds no review of ours
-#                                gets one from the review job before its check, which the read below finds; this
-#                                covers the moment before that review, and a success
+#   IRONBEE_CONCLUDING           the head the review step began to conclude a review on, when it said so before it
+#                                stopped: that head gets no neutral. A blocking conclusion on a head that holds no
+#                                review of ours gets one from the review step before its check, which the read below
+#                                finds; this covers the moment before that review, and a success
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -92,20 +92,21 @@ for n in 1 2 3; do
 done
 [ -n "$own" ] || fail 1 "GitHub did not make the check on $short (HTTP $status)"
 
-# The second look: a review's conclusion of ours beside this neutral, written while it was being written.
+# The second look: a review's conclusion of ours beside this neutral, written while it was being written. A review
+# concludes success or action_required; a released pre-release wrote failure where action_required is written now, and
+# a copy of it says action_required: nothing of this release writes failure.
 ours_checks "$head" "$IRONBEE_TMP/again.json"
 now=$(jq -r --argjson own "$own" '.[] | select(.id == $own) | .conclusion // ""' "$IRONBEE_TMP/again.json")
-case $now in
-  success | failure)
-    say "check: ours on $short already says $now: a review rewrote it"
-    exit 0 ;;
-esac
-jq --argjson own "$own" '[.[] | select(.id != $own and (.conclusion == "success" or .conclusion == "failure"))] | max_by(.id) // empty' \
+if [ "$(ijq -n --arg now "$now" 'include "ironbee"; $now | review_conclusion')" = true ]; then
+  say "check: ours on $short already says $now: a review rewrote it"
+  exit 0
+fi
+ijq --argjson own "$own" 'include "ironbee"; [.[] | select(.id != $own and (.conclusion | review_conclusion))] | max_by(.id) // empty' \
   "$IRONBEE_TMP/again.json" > "$IRONBEE_TMP/review.json"
 if [ ! -s "$IRONBEE_TMP/review.json" ]; then
   exit 0
 fi
-jq '{status: "completed", conclusion: .conclusion,
+jq '{status: "completed", conclusion: (if .conclusion == "failure" then "action_required" else .conclusion end),
      output: {title: (.output.title // "" | if . == "" then "IronBee review" else . end),
               summary: (.output.summary // "" | if . == "" then "IronBee review" else . end)}}' \
   "$IRONBEE_TMP/review.json" > "$IRONBEE_TMP/copy.json"

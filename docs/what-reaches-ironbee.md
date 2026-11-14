@@ -8,7 +8,7 @@ Every call carries your API key in `X-API-Key`, and the runner's version in `Use
 
 ## Registration: `PUT /v1/code-review-repositories`
 
-Made by the register job, or by you ([Setup](setup.md#3-register-the-repository)). A run's start makes the
+Made by the register step, or by you ([Setup](setup.md#3-register-the-repository)). A run's start makes the
 repository's project itself when it has none, with no registration call.
 
 ```json
@@ -152,7 +152,7 @@ The runner can print both bodies of a run in the job's log as it sends them (its
 ## What stays with you
 
 The clone, the model traffic, the rules repository's files, the review file, every record the reviewer keeps (in the
-pull request's comments), the check run's text, the run's working files (deleted with the job's container), and the
+pull request's comments), the check run's text, the run's working files (deleted with the runner's container), and the
 job's log (in your CI).
 
 ## Credentials

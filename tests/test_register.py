@@ -1,4 +1,4 @@
-"""The register job (scripts/register.sh) against a stub of IronBee's API: the body (runner 1.0.0's, frozen), each answer
+"""The register step (scripts/register.sh) against a stub of IronBee's API: the body (runner 1.0.0's, frozen), each answer
 and each refusal, the attempts, and a log that names no number of the contract."""
 from __future__ import annotations
 

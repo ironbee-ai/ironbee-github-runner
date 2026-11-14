@@ -1,7 +1,7 @@
-"""The workflow files themselves: the inputs and secrets by their published names and the variable each becomes, where
-each secret may go, no expression inside a script, every action pinned by commit, the image by digest, the jobs'
-conditions and the queue, and the customer's file; every reusable workflow's image as the build checks it; the build's
-and the release's own files. Needs PyYAML (skipped without it)."""
+"""The workflow files themselves: the one job and its steps, the inputs and secrets by their published names and the
+variable each becomes, where each secret may go, no expression inside a script, every action pinned by commit, the image
+by digest, each step's condition and the queue, and the customer's file; every reusable workflow's image as the build
+checks it; the build's and the release's own files. Needs PyYAML (skipped without it)."""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,7 @@ import re
 import subprocess
 import unittest
 
-from support import ROOT, SCRIPTS
+from support import ROOT, SCRIPTS, changed, event
 
 try:
     import yaml
@@ -27,10 +27,10 @@ INPUTS = {"model-provider", "model-url", "model-name", "model-ca-certificate", "
           "runs-on", "knowledge-repository", "knowledge-ref", "ignore-paths", "target-branches", "skip-labels", "skip-title-keywords", "app-slug",
           "ironbee-api-url", "ironbee-run-reports"}
 SECRETS = {"ironbee-api-key", "registry-token", "model-key", "model-headers", "knowledge-token", "jev-key", "app-id", "app-private-key"}
-REQUIRED = {"model-provider"}                               # the two secrets every review needs are checked by job 1, so a run without secrets still reaches it
+REQUIRED = {"model-provider"}                               # the two secrets every review needs are checked by the decide step, so a run without secrets still reaches it
 NEEDED_SECRETS = {"ironbee-api-key", "registry-token"}
 
-# The variable each becomes in the review job's container: the runner's own list of what it reads.
+# The variable each becomes in the review step's container: the runner's own list of what it reads.
 VARIABLES = {"model-provider": "IRONBEE_MODEL_PROVIDER", "model-url": "IRONBEE_MODEL_URL", "model-key": "IRONBEE_MODEL_KEY",
              "model-headers": "IRONBEE_MODEL_HEADERS", "model-ca-certificate": "IRONBEE_MODEL_CA_CERTIFICATE", "model-name": "IRONBEE_MODEL_NAME",
              "model-prefix": "IRONBEE_MODEL_PREFIX", "model-max-output": "IRONBEE_MODEL_MAX_OUTPUT", "aws-region": "AWS_REGION",
@@ -39,15 +39,28 @@ VARIABLES = {"model-provider": "IRONBEE_MODEL_PROVIDER", "model-url": "IRONBEE_M
              "target-branches": "IRONBEE_TARGET_BRANCHES", "skip-labels": "IRONBEE_SKIP_LABELS", "skip-title-keywords": "IRONBEE_SKIP_TITLE_KEYWORDS",
              "app-id": "IRONBEE_APP_ID", "app-private-key": "IRONBEE_APP_PRIVATE_KEY", "app-slug": "IRONBEE_APP_SLUG", "ironbee-api-url": "IRONBEE_API_URL",
              "ironbee-run-reports": "IRONBEE_RUN_REPORTS"}
-HANDED = {"GITHUB_TOKEN": "${{ github.token }}", "IRONBEE_ACTION": "${{ needs.decide.outputs.action }}",
-          "IRONBEE_PULL_REQUEST": "${{ needs.decide.outputs.pull-request }}", "IRONBEE_COMMENT_ID": "${{ needs.decide.outputs.comment-id }}"}
+HANDED = {"GITHUB_TOKEN": "${{ github.token }}", "IRONBEE_ACTION": "${{ steps.decide.outputs.action }}",
+          "IRONBEE_PULL_REQUEST": "${{ steps.decide.outputs.pull-request }}", "IRONBEE_COMMENT_ID": "${{ steps.decide.outputs.comment-id }}"}
 
-# Where each secret's value may go, as (job, place): the model's, the rules repository's and Jev's to the review job
-# alone; the App's key to the review job and the token steps; job 1 only learns whether a secret is set.
-SECRET_PLACES = {"ironbee-api-key": {("register", "env"), ("review", "env")}, "registry-token": {("review", "container")},
+# The one job's steps, in order, by id.
+STEPS = ["scripts", "register", "decide", "app-token", "neutral", "review", "stop", "fallback-app-token", "fallback"]
+
+# The pull request's queue: the events that may run the reviewer wait their turn; every other one has a group of its own.
+QUEUE = ("${{ (github.event_name == 'pull_request' || "
+         "(github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id && "
+         "github.event.comment.user.type != 'Bot' && github.event.sender.type != 'Bot') || "
+         "(github.event_name == 'issue_comment' && contains(github.event.comment.body, '@') && "
+         "github.event.comment.user.type != 'Bot' && github.event.sender.type != 'Bot')) "
+         "&& format('ironbee-review-{0}', github.event.pull_request.number || github.event.issue.number) "
+         "|| format('ironbee-{0}', github.run_id) }}")
+
+# Where each secret's value may go, as (step, place): the model's, the rules repository's, Jev's and the registry
+# token to the review step alone; the API key to it and the register step; the App's key to it and the token steps;
+# the decide step only learns whether a secret is set.
+SECRET_PLACES = {"ironbee-api-key": {("register", "env"), ("review", "env")}, "registry-token": {("review", "env")},
                  "model-key": {("review", "env")}, "model-headers": {("review", "env")}, "knowledge-token": {("review", "env")},
-                 "jev-key": {("review", "env")}, "app-id": {("review", "env"), ("decide", "with"), ("fallback", "with")},
-                 "app-private-key": {("review", "env"), ("decide", "with"), ("fallback", "with")}}
+                 "jev-key": {("review", "env")}, "app-id": {("review", "env"), ("app-token", "with"), ("fallback-app-token", "with")},
+                 "app-private-key": {("review", "env"), ("app-token", "with"), ("fallback-app-token", "with")}}
 REVIEW_ONLY_INPUTS = {"model-provider", "model-url", "model-name", "model-ca-certificate", "model-prefix", "model-max-output", "aws-region",
                       "knowledge-repository", "knowledge-ref", "ignore-paths", "target-branches", "skip-labels", "skip-title-keywords",
                       "ironbee-run-reports"}
@@ -57,6 +70,20 @@ PINNED = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[^@]+)?@[0-9a-f]{40}$")
 IMAGE = re.compile(r"^docker\.io/([a-z0-9]+(?:[._-][a-z0-9]+)*)/[a-z0-9]+(?:[._-][a-z0-9]+)*@sha256:[0-9a-f]{64}$")
 USES_LINE = re.compile(r"^\s*(?:-\s+)?uses:\s+(\S+)(.*)$")
 PLACEHOLDER = "0" * 64
+
+
+def evaluate(expression: str, event_name: str, payload: dict, run_id: int = 42):
+    """A `${{ }}` expression of the operators and functions the queue's group uses, over an event: `&&` and `||` give an
+    operand as GitHub's do, a missing property is null, `contains` ignores case."""
+    def github(path: str):
+        node = {"event_name": event_name, "run_id": run_id, "event": payload}
+        for key in path.split("."): node = node.get(key) if isinstance(node, dict) else None
+        return node
+    body = expression.strip().removeprefix("${{").removesuffix("}}")
+    body = re.sub(r"\bgithub\.([A-Za-z_.]+)", lambda m: f"github({m.group(1)!r})", body).replace("&&", " and ").replace("||", " or ")
+    functions = {"github": github, "contains": lambda a, b: str(b or "").lower() in str(a or "").lower(),
+                 "format": lambda f, *args: re.sub(r"\{(\d+)\}", lambda m: str(args[int(m.group(1))]), f)}
+    return eval(" ".join(body.split()), {"__builtins__": {}}, functions)
 
 
 def load(path) -> dict:
@@ -90,6 +117,7 @@ def listed() -> dict:
 class Workflow(unittest.TestCase):
     def setUp(self) -> None:
         self.wf = load(WORKFLOW); self.jobs = self.wf["jobs"]; self.call = self.wf["on"]["workflow_call"]
+        self.job = self.jobs["review"]; self.steps = {s["id"]: s for s in self.job["steps"]}
 
     def test_the_inputs_and_secrets_by_their_names(self):
         self.assertEqual(set(self.call["inputs"]), INPUTS)
@@ -98,43 +126,73 @@ class Workflow(unittest.TestCase):
         self.assertEqual(required, REQUIRED)
         self.assertTrue(all(v["type"] == "string" for v in self.call["inputs"].values()))
 
-    def test_the_four_jobs(self):
-        self.assertEqual(set(self.jobs), {"register", "decide", "review", "fallback"})
-        self.assertNotIn("IronBee review", [j.get("name") for j in self.jobs.values()])   # no job's check run takes the gate's name
+    def test_one_job_named_review(self):
+        self.assertEqual(set(self.jobs), {"review"})                 # a pull request's checks list it once, as <caller job> / Review
+        self.assertEqual(self.job["name"], "Review")
+        self.assertNotIn("container", self.job)                       # the image runs in a step
+        self.assertNotIn("outputs", self.job)
 
-    def test_the_review_job_hands_every_input_and_secret_to_the_runner(self):
-        env = self.jobs["review"]["steps"][-1]["env"]
+    def test_its_steps_in_order(self):
+        self.assertEqual([s["id"] for s in self.job["steps"]], STEPS)
+        self.assertTrue(all("id" in s for s in self.job["steps"]))
+
+    def test_the_review_step_hands_every_input_and_secret_to_the_runner(self):
+        env = self.steps["review"]["env"]
         want = {var: "${{ %s.%s }}" % ("secrets" if name in SECRETS else "inputs", name) for name, var in VARIABLES.items()}
-        self.assertEqual(env, {**want, **HANDED})
+        self.assertEqual(env, {**want, **HANDED, "IRONBEE_REGISTRY_TOKEN": "${{ secrets.registry-token }}"})
         self.assertEqual(set(VARIABLES) | {"runs-on", "registry-token"}, INPUTS | SECRETS)
 
-    def test_the_review_job_runs_the_images_entry_point(self):
-        [step] = self.jobs["review"]["steps"]
-        self.assertEqual(step["run"], "ironbee-runner --print-report")
+    def test_the_review_and_its_stop_run_the_review_script(self):
+        self.assertEqual(self.steps["review"]["run"], "exec bash .ironbee-github-runner/scripts/review.sh")   # a signal to the step reaches the script
+        self.assertEqual(self.steps["stop"]["run"], "bash .ironbee-github-runner/scripts/review.sh stop")
+        self.assertNotIn("env", self.steps["stop"])
         self.assertNotIn("python -m core.runner", WORKFLOW.read_text())
 
-    def test_the_image_by_digest_and_its_login(self):
-        c = self.jobs["review"]["container"]
-        m = IMAGE.match(c["image"])
-        self.assertIsNotNone(m, c["image"])
-        self.assertEqual(c["credentials"], {"username": m.group(1), "password": "${{ secrets.registry-token }}"})
-        for name in ("register", "decide", "fallback"):
-            self.assertNotIn("container", self.jobs[name])
+    def test_the_image_by_digest_in_the_jobs_environment(self):
+        self.assertEqual(set(self.job["env"]), {"IRONBEE_IMAGE"})
+        m = IMAGE.match(self.job["env"]["IRONBEE_IMAGE"])
+        self.assertIsNotNone(m, self.job["env"]["IRONBEE_IMAGE"])
+        self.assertEqual(m.group(1), "ironbeeai")                    # the namespace the registry token signs in with
 
     def test_the_queue_of_a_pull_request(self):
-        self.assertEqual(self.jobs["review"]["concurrency"], {"group": "ironbee-review-${{ needs.decide.outputs.pull-request }}", "cancel-in-progress": False, "queue": "max"})
-        for name in ("register", "decide", "fallback"):
-            self.assertNotIn("concurrency", self.jobs[name])
+        c = self.job["concurrency"]
+        self.assertEqual({**c, "group": " ".join(c["group"].split())},
+                         {"group": QUEUE, "cancel-in-progress": False, "queue": "max"})            # its lines as one
         self.assertNotIn("concurrency", self.wf)
 
-    def test_each_job_has_a_timeout_and_a_hung_review_holds_the_queue_two_hours_at_most(self):
-        self.assertEqual({n: j.get("timeout-minutes") for n, j in self.jobs.items()}, {"register": 10, "decide": 10, "review": 120, "fallback": 10})
+    def test_who_waits_in_the_queue(self):
+        """Every event that may run the reviewer waits in its pull request's queue; a bot's comment (ours included), a
+        thread's first comment, a comment that mentions nobody and the events of no pull request never wait."""
+        group = self.job["concurrency"]["group"]
+        comment, reply = event("issue_comment.created"), event("pull_request_review_comment.created")
+        bot = {"user": {"login": "acme-reviewer[bot]", "type": "Bot"}}
+        cases = {"a pull request's event": ("pull_request", event("pull_request.opened"), "ironbee-review-7"),
+                 "a person's reply on a thread": ("pull_request_review_comment", reply, "ironbee-review-7"),
+                 "a person's comment that mentions someone": ("issue_comment", comment, "ironbee-review-7"),
+                 "a thread's first comment": ("pull_request_review_comment", changed(reply, comment__in_reply_to_id=None), "ironbee-42"),
+                 "a bot's reply on a thread": ("pull_request_review_comment", changed(reply, comment__user=bot["user"]), "ironbee-42"),
+                 "a reply a bot sent": ("pull_request_review_comment", changed(reply, sender__type="Bot"), "ironbee-42"),
+                 "a bot's comment that mentions us": ("issue_comment", changed(comment, comment__user=bot["user"]), "ironbee-42"),
+                 "a comment a bot sent": ("issue_comment", changed(comment, sender__type="Bot"), "ironbee-42"),
+                 "a comment that mentions nobody": ("issue_comment", changed(comment, comment__body="Looks good to me."), "ironbee-42"),
+                 "a merge queue's group": ("merge_group", event("merge_group.checks_requested"), "ironbee-42"),
+                 "a push": ("push", {"ref": "refs/heads/main"}, "ironbee-42"),
+                 "a manual start": ("workflow_dispatch", {}, "ironbee-42")}
+        for name, (event_name, payload, want) in cases.items():
+            with self.subTest(name):
+                self.assertEqual(evaluate(group, event_name, payload), want)
+
+    def test_each_step_has_a_timeout_and_a_hung_review_holds_the_queue_two_hours_at_most(self):
+        timeouts = {s["id"]: s.get("timeout-minutes") for s in self.job["steps"]}
+        self.assertEqual(timeouts, {"scripts": 5, "register": 10, "decide": 10, "app-token": 5, "neutral": 10, "review": 120, "stop": 2,
+                                    "fallback-app-token": 5, "fallback": 10})
+        self.assertNotIn("timeout-minutes", self.job)
 
     def test_run_reports_are_on_unless_the_caller_turns_them_off(self):
         self.assertEqual(self.call["inputs"]["ironbee-run-reports"], {"description": self.call["inputs"]["ironbee-run-reports"]["description"],
                                                                       "type": "string", "required": False, "default": "true"})
-        self.assertEqual(self.jobs["review"]["steps"][-1]["env"]["IRONBEE_RUN_REPORTS"], "${{ inputs.ironbee-run-reports }}")
-        self.assertNotIn("ironbee-run-reports", str(self.jobs["register"]))       # the registration is the same either way
+        self.assertEqual(self.steps["review"]["env"]["IRONBEE_RUN_REPORTS"], "${{ inputs.ironbee-run-reports }}")
+        self.assertNotIn("ironbee-run-reports", str(self.steps["register"]))      # the registration is the same either way
 
     def test_no_expression_inside_a_script(self):
         for where, text in strings(self.wf):
@@ -147,85 +205,93 @@ class Workflow(unittest.TestCase):
 
     def test_each_secret_where_it_may_go(self):
         places: dict = {}
-        for where, text in strings(self.wf):
-            if where[0] != "jobs": continue
-            job = where[1]; place = "container" if "container" in where else where[-2] if where[-2] in ("env", "with") else where[-1]
-            for expr in EXPRESSION.findall(text):
-                for name, cmp in re.findall(r"secrets\.([a-z0-9-]+)(\s*!=\s*'')?", expr):
-                    if cmp: self.assertEqual((job, place), ("decide", "env"), f"{name}: only job 1 asks whether it is set"); continue
-                    places.setdefault(name, set()).add((job, place))
+        for step in self.job["steps"]:
+            for where, text in strings(step):
+                place = where[0] if where[0] in ("env", "with") else where[-1]
+                for expr in EXPRESSION.findall(text):
+                    for name, cmp in re.findall(r"secrets\.([a-z0-9-]+)(\s*!=\s*'')?", expr):
+                        if cmp: self.assertEqual((step["id"], place), ("decide", "env"), f"{name}: only the decide step asks whether it is set"); continue
+                        places.setdefault(name, set()).add((step["id"], place))
         self.assertEqual(places, SECRET_PLACES)
+        for where, text in strings({k: v for k, v in self.job.items() if k != "steps"}):
+            self.assertNotIn("secrets.", text, "/".join(where))
 
-    def test_the_model_and_the_rules_repository_go_to_the_review_job_alone(self):
-        for where, text in strings(self.wf):
-            if where[0] != "jobs": continue
-            for name in re.findall(r"inputs\.([a-z0-9-]+)", text):
-                if name in REVIEW_ONLY_INPUTS: self.assertEqual(where[1], "review", f"{name} in {'/'.join(where)}")
+    def test_the_model_and_the_rules_repository_go_to_the_review_step_alone(self):
+        for step in self.job["steps"]:
+            for where, text in strings(step):
+                for name in re.findall(r"inputs\.([a-z0-9-]+)", text):
+                    if name in REVIEW_ONLY_INPUTS: self.assertEqual(step["id"], "review", f"{name} in {step['id']}/{'/'.join(where)}")
 
-    def test_job_1_learns_whether_secrets_are_set_never_their_values(self):
-        decide = next(s for s in self.jobs["decide"]["steps"] if s.get("id") == "decide")
-        self.assertEqual(decide["env"]["IRONBEE_HAS_API_KEY"], "${{ secrets.ironbee-api-key != '' }}")
-        self.assertEqual(decide["env"]["IRONBEE_HAS_REGISTRY_TOKEN"], "${{ secrets.registry-token != '' }}")
-        self.assertEqual(decide["env"]["IRONBEE_HAS_APP_ID"], "${{ secrets.app-id != '' }}")
-        self.assertEqual(decide["env"]["IRONBEE_HAS_APP_PRIVATE_KEY"], "${{ secrets.app-private-key != '' }}")
+    def test_the_decide_step_learns_whether_secrets_are_set_never_their_values(self):
+        env = self.steps["decide"]["env"]
+        self.assertEqual(env["IRONBEE_HAS_API_KEY"], "${{ secrets.ironbee-api-key != '' }}")
+        self.assertEqual(env["IRONBEE_HAS_REGISTRY_TOKEN"], "${{ secrets.registry-token != '' }}")
+        self.assertEqual(env["IRONBEE_HAS_APP_ID"], "${{ secrets.app-id != '' }}")
+        self.assertEqual(env["IRONBEE_HAS_APP_PRIVATE_KEY"], "${{ secrets.app-private-key != '' }}")
 
-    def test_the_secrets_every_review_needs_say_that_job_1_checks_them(self):
+    def test_the_secrets_every_review_needs_say_that_the_decide_step_checks_them(self):
         for name in NEEDED_SECRETS:
             self.assertFalse(self.call["secrets"][name]["required"])
-            self.assertIn("the decide job checks that it is set", self.call["secrets"][name]["description"])
+            self.assertIn("the decide step checks that it is set", self.call["secrets"][name]["description"])
 
-    def test_the_api_address_reaches_the_runner_and_the_register_job_alone(self):
+    def test_the_api_address_reaches_the_runner_and_the_register_step_alone(self):
         self.assertEqual(self.call["inputs"]["ironbee-api-url"]["default"], "")
-        self.assertEqual(self.jobs["review"]["steps"][-1]["env"]["IRONBEE_API_URL"], "${{ inputs.ironbee-api-url }}")
-        self.assertEqual(self.jobs["register"]["steps"][-1]["env"]["IRONBEE_API_URL"], "${{ inputs.ironbee-api-url }}")
-        places = {(where[1], where[-2]) for where, text in strings(self.wf) if where[0] == "jobs" and "inputs.ironbee-api-url" in text}
-        self.assertEqual(places, {("review", "env"), ("register", "env")})
+        for name in ("review", "register"):
+            self.assertEqual(self.steps[name]["env"]["IRONBEE_API_URL"], "${{ inputs.ironbee-api-url }}")
+        places = {step["id"] for step in self.job["steps"] for _, text in strings(step) if "inputs.ironbee-api-url" in text}
+        self.assertEqual(places, {"review", "register"})
 
-    def test_the_apps_token_is_minted_only_where_a_check_is_written(self):
-        for name in ("decide", "fallback"):
-            steps = self.jobs[name]["steps"]
-            i = next(i for i, s in enumerate(steps) if "create-github-app-token" in s.get("uses", ""))
+    def test_the_register_step_and_its_runner_version(self):
+        step = self.steps["register"]
+        self.assertEqual(step["run"], "bash .ironbee-github-runner/scripts/register.sh")
+        self.assertRegex(str(step["env"]["IRONBEE_RUNNER_VERSION"]), r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+        self.assertEqual(set(step["env"]), {"IRONBEE_API_KEY", "IRONBEE_API_URL", "IRONBEE_RUNNER_VERSION"})
+
+    def test_the_apps_token_is_minted_only_right_before_a_check_is_written(self):
+        steps = self.job["steps"]
+        minted = [i for i, s in enumerate(steps) if "create-github-app-token" in s.get("uses", "")]
+        self.assertEqual([steps[i]["id"] for i in minted], ["app-token", "fallback-app-token"])
+        for i in minted:
             self.assertEqual(steps[i]["with"]["permission-checks"], "write")
             self.assertTrue(all("permission-" not in k or k == "permission-checks" for k in steps[i]["with"]))
             self.assertEqual(steps[i + 1]["run"], "bash .ironbee-github-runner/scripts/neutral.sh")
-            self.assertEqual(steps[i + 1]["env"]["IRONBEE_APP_TOKEN"], "${{ steps.app-token.outputs.token }}")
-            self.assertEqual(i + 2, len(steps))                # the token's step comes right before the write, the last step
+            self.assertEqual(steps[i + 1]["env"]["IRONBEE_APP_TOKEN"], "${{ steps.%s.outputs.token }}" % steps[i]["id"])
+            self.assertIn("inputs.app-slug != ''", steps[i]["if"])
+            self.assertEqual(steps[i]["if"].replace(" && inputs.app-slug != ''", ""), steps[i + 1]["if"])   # minted only where the write follows
 
     def test_the_scripts_are_this_workflows_own(self):
-        for name in ("register", "decide", "fallback"):
-            [checkout] = [s for s in self.jobs[name]["steps"] if "actions/checkout@" in s.get("uses", "")]
-            self.assertEqual(checkout["with"]["repository"], "${{ job.workflow_repository }}")
-            self.assertEqual(checkout["with"]["ref"], "${{ job.workflow_sha }}")
-            self.assertFalse(checkout["with"]["persist-credentials"])
+        [checkout] = [s for s in self.job["steps"] if "actions/checkout@" in s.get("uses", "")]
+        self.assertIs(checkout, self.job["steps"][0])
+        self.assertEqual(checkout["with"], {"repository": "${{ job.workflow_repository }}", "ref": "${{ job.workflow_sha }}",
+                                            "path": ".ironbee-github-runner", "sparse-checkout": "scripts", "persist-credentials": False})
+        self.assertNotIn("if", checkout)
 
-    def test_the_register_job_and_its_two_events(self):
-        j = self.jobs["register"]
-        self.assertIn("github.event_name == 'workflow_dispatch'", j["if"])
-        self.assertIn("github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)", j["if"])
-        [_, step] = j["steps"]
-        self.assertEqual(step["run"], "bash .ironbee-github-runner/scripts/register.sh")
-        self.assertRegex(str(step["env"]["IRONBEE_RUNNER_VERSION"]), r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-        self.assertEqual(j["permissions"], {"contents": "read"})
+    def test_the_job_and_its_events(self):
+        self.assertIn("""contains(fromJSON('["pull_request", "issue_comment", "pull_request_review_comment", "merge_group", "workflow_dispatch"]'), github.event_name)""", self.job["if"])
+        self.assertIn("(github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))", self.job["if"])
 
-    def test_jobs_1_to_3_and_their_events(self):
-        self.assertEqual(self.jobs["decide"]["if"], """contains(fromJSON('["pull_request", "issue_comment", "pull_request_review_comment", "merge_group"]'), github.event_name)""")
-        self.assertEqual(self.jobs["review"]["if"], "needs.decide.outputs.action != ''")
-        f = self.jobs["fallback"]
-        self.assertEqual(f["needs"], ["decide", "review"])
-        for part in ("always()", "github.event_name == 'pull_request'", "needs.decide.outputs.action == 'review'", "needs.review.result != 'success'"):
-            self.assertIn(part, f["if"])
+    def test_each_steps_events(self):
+        self.assertEqual(self.steps["register"]["if"], "github.event_name == 'push' || github.event_name == 'workflow_dispatch'")
+        self.assertEqual(self.steps["decide"]["if"], """contains(fromJSON('["pull_request", "issue_comment", "pull_request_review_comment", "merge_group"]'), github.event_name)""")
+        self.assertEqual(self.steps["app-token"]["if"], "steps.decide.outputs.write != '' && inputs.app-slug != ''")
+        self.assertEqual(self.steps["neutral"]["if"], "steps.decide.outputs.write != ''")              # off wherever decide did not run
+        self.assertEqual(self.steps["review"]["if"], "steps.decide.outputs.action != ''")
+        self.assertEqual(self.steps["stop"]["if"], "always() && steps.decide.outputs.action != ''")
+
+    def test_the_fallback_follows_a_pull_requests_review_that_did_not_succeed(self):
+        f = self.steps["fallback"]
+        self.assertEqual(f["if"], "always() && github.event_name == 'pull_request' && steps.decide.outcome == 'success' && "
+                                  "steps.decide.outputs.action == 'review' && steps.review.outcome != 'success'")
+        self.assertEqual((f["env"]["IRONBEE_REASON"], f["env"]["IRONBEE_HEAD"]), ("not_run", "${{ steps.decide.outputs.head }}"))
+        self.assertEqual(f["env"]["IRONBEE_PULL_REQUEST"], "${{ steps.decide.outputs.pull-request }}")
+        names = [s["id"] for s in self.job["steps"]]
+        self.assertLess(names.index("stop"), names.index("fallback"))                                   # the container is gone first
 
     def test_the_fallback_writes_nothing_where_the_review_was_concluding(self):
-        self.assertEqual(self.jobs["review"]["outputs"], {"concluding": "${{ steps.run.outputs.concluding }}"})
-        self.assertEqual(self.jobs["review"]["steps"][-1]["id"], "run")
-        write = self.jobs["fallback"]["steps"][-1]["env"]
-        self.assertEqual(write["IRONBEE_CONCLUDING"], "${{ needs.review.outputs.concluding }}")
-        self.assertEqual(write["IRONBEE_HEAD"], "${{ needs.decide.outputs.head }}")
+        self.assertEqual(self.steps["fallback"]["env"]["IRONBEE_CONCLUDING"], "${{ steps.review.outputs.concluding }}")
 
-    def test_the_jobs_without_the_image_take_no_more_than_they_need(self):
-        self.assertEqual(self.jobs["decide"]["permissions"], {"contents": "read", "pull-requests": "read", "checks": "write"})
-        self.assertEqual(self.jobs["fallback"]["permissions"], {"contents": "read", "pull-requests": "read", "checks": "write"})
-        self.assertNotIn("permissions", self.jobs["review"])     # the caller's, with contents: write where it allows resolving threads
+    def test_the_job_takes_the_callers_permissions(self):
+        self.assertNotIn("permissions", self.job)     # contents: write where the caller allows resolving threads
         self.assertNotIn("permissions", self.wf)
 
 
@@ -269,9 +335,8 @@ class ReusableWorkflows(unittest.TestCase):
     def test_each_names_its_image_by_a_full_digest(self):
         allowed = os.environ.get("IRONBEE_PLACEHOLDER_ALLOWED") == "true"
         for path, image in listed().items():
-            containers = [j["container"] for j in load(ROOT / path)["jobs"].values() if "container" in j]
-            refs = [c["image"] if isinstance(c, dict) else c for c in containers]
-            self.assertTrue(refs, path)
+            refs = [j["env"]["IRONBEE_IMAGE"] for j in load(ROOT / path)["jobs"].values() if "IRONBEE_IMAGE" in j.get("env", {})]
+            self.assertEqual(len(refs), 1, path)
             for ref in refs:
                 m = re.fullmatch(re.escape(image) + r"@sha256:([0-9a-f]{64})", ref)
                 self.assertIsNotNone(m, f"{path}: {ref}")

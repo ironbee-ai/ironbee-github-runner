@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Job 1: what a pull request's event asks of the reviewer, decided before any image is pulled and outside the pull
-# request's queue. It ends what can never run or may not be asked: a fork's event, a bot's comment, a run without the
+# The decide step: what a pull request's event asks of the reviewer, decided before any image is pulled. It ends what
+# can never run or may not be asked: a fork's event, a bot's comment, a run without the
 # secrets, a comment not addressed to us, a question on a thread that is not ours or from someone who does not count, a
 # command from someone who may not write. A merge queue's group, and a pull request's run without the secrets, get a
 # neutral check instead where there is a key to write it with (neutral.sh writes it).
@@ -12,8 +12,9 @@
 #                                whether each secret is set: true or false. A run has its secrets when the API key and the
 #                                registry token are both set; without them the image could not be pulled or start.
 #
-# GITHUB_OUTPUT gets, for job 2: action (review, answer, respond, retract), pull-request, comment-id, and for job 3 the
-# head a pull request's event names; for neutral.sh: write (merge_group, no_secrets), write-head, write-pull-request.
+# GITHUB_OUTPUT gets, for the review step: action (review, answer, respond, retract), pull-request, comment-id, and for
+# the fallback the head a pull request's event names; for neutral.sh: write (merge_group, no_secrets), write-head,
+# write-pull-request.
 # Nothing at all: the run ends here. Exit 1: a read that failed; 2: the workflow's configuration.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh

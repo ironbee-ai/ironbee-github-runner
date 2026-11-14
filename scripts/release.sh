@@ -40,7 +40,9 @@ IMAGE_TAG='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(rc\.[1-9][0-9]*)
 RELEASE_TAG='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 DIGEST='^sha256:[0-9a-f]{64}$'
 ZEROS=sha256:$(printf '%064d' 0)
-IMAGE_LINE='^([[:space:]]*image:[[:space:]]+)([^@[:space:]]+)@(sha256:[0-9a-f]{64})([[:space:]].*)?$'
+# The image line: the job's IRONBEE_IMAGE, or a job container's `image:` in the releases before the one job
+# (v1.0.0-rc.1 and -rc.2), which a run again of such a release reads at its tag.
+IMAGE_LINE='^([[:space:]]*(IRONBEE_IMAGE|image):[[:space:]]+)([^@[:space:]]+)@(sha256:[0-9a-f]{64})([[:space:]].*)?$'
 VERSION_LINE='^([[:space:]]*IRONBEE_RUNNER_VERSION:[[:space:]]+)([0-9]+\.[0-9]+\.[0-9]+)([[:space:]].*)?$'
 
 notice() { printf '::notice::%s\n' "$(command_text "$*")"; }
@@ -126,10 +128,10 @@ stamp_file() {
   was_digest=""
   was_version=""
   while IFS= read -r line || [ -n "$line" ]; do
-    if [[ $line =~ $IMAGE_LINE ]] && [ "${BASH_REMATCH[2]}" = "$image" ]; then
+    if [[ $line =~ $IMAGE_LINE ]] && [ "${BASH_REMATCH[3]}" = "$image" ]; then
       images=$((images + 1))
-      was_digest=${BASH_REMATCH[3]}
-      line=${BASH_REMATCH[1]}$image@$digest${BASH_REMATCH[4]}
+      was_digest=${BASH_REMATCH[4]}
+      line=${BASH_REMATCH[1]}$image@$digest${BASH_REMATCH[5]}
     elif [[ $line =~ $VERSION_LINE ]]; then
       versions=$((versions + 1))
       was_version=${BASH_REMATCH[2]}

@@ -12,7 +12,7 @@ the month's developers beside the limit.
 Every licence has an end date. It is good through that day, in UTC.
 
 - **In its last fourteen days** (the end day and the thirteen before it), every run prints one warning line in the
-  job's log, and so does the register job:
+  job's log, and so does the register step:
 
   ```
   warning: the licence for IronBee's self-hosted review ends soon; renew it to keep pull requests reviewed
@@ -27,8 +27,8 @@ Every licence has an end date. It is good through that day, in UTC.
   The licence for IronBee's self-hosted review has ended; contact IronBee to renew it.
   ```
 
-  `neutral` passes a required check, so no merge is held. A `failure` an earlier review wrote stays on its head until
-  the head moves. The register job fails with the same reason.
+  `neutral` passes a required check, so no merge is held. An `action_required` an earlier review wrote stays on its
+  head until the head moves. The register step fails with the same reason.
 - **There is no grace period.** When the licence is renewed, or a trial extended, IronBee moves the date, and nothing
   changes on your side: the next event is reviewed.
 
@@ -67,7 +67,7 @@ answered or retracted, and a run already past its start finishes. A pull request
 IronBee's reviews are suspended for this account; contact IronBee.
 ```
 
-As with an ended licence, no merge is held, and a `failure` an earlier review wrote stays until the head moves:
+As with an ended licence, no merge is held, and an `action_required` an earlier review wrote stays until the head moves:
 suspending an account does not clear findings. Lifting the suspension needs nothing on your side.
 
 The runner cannot review without IronBee's answer at its start: the settings, the gates and the rules come from it,

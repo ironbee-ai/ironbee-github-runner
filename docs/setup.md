@@ -82,15 +82,28 @@ What each part does:
   ([Versions](versions.md)).
 - **The inputs and secrets.** Listed below. `model-provider` is required. `ironbee-api-key` and `registry-token` are
   needed for every review, though the workflow does not mark them required: GitHub gives a Dependabot run empty
-  secrets, and that run must still reach the first job, which counts a run as having its secrets only when both are
+  secrets, and that run must still reach the decide step, which counts a run as having its secrets only when both are
   set. `model-key` is needed at a model provider's own endpoint; every other one only for what it names.
 
-The reusable workflow holds four jobs. A register job runs for the last two triggers. For a pull request's events,
-a first job without the image decides what the event asks for and ends the workflow when it is nothing for the
-reviewer; a second job runs the image; a third writes a `neutral` check when the second did not succeed. One run of
-the second job runs per pull request at a time: a run that has started is never cancelled, and the runs that wait
-are kept and run in turn, each reading what the one before it wrote. A run of the second job is stopped after two
-hours, so one that hangs holds the queue no longer; the third job follows it as any run that did not succeed.
+The reusable workflow is one job, `Review`, so a pull request's checks show it once (as `<your job> / Review`, beside
+the `IronBee review` check it writes). Its steps:
+
+1. **The workflow's scripts**, fetched from the workflow's own repository at the commit your file names.
+2. **Register**, for the last two triggers alone: the repository's project at IronBee (step 3).
+3. **Decide**, for a pull request's events: what the event asks for, without the image. Nothing for the reviewer ends
+   the run here.
+4. **A `neutral` check**, for a merge queue's group and a pull request's run given no secrets.
+5. **Review**: the runner's image, pulled from Docker Hub by its digest and run, for the review, the answer or the
+   command. It is stopped after two hours; every other step after a few minutes, so a run holds the pull request's
+   queue a bounded time.
+6. **Fallback**: a pull request's review that did not succeed (failed, cancelled, timed out, or the image not pulled
+   or started) leaves a `neutral` check on the event's head, unless the review had begun to conclude there.
+
+One run per pull request at a time, for the events that may run the reviewer: a pull request's events, a person's
+reply on a review thread, and a person's conversation comment that mentions someone (`@`). A run that has started is
+never cancelled, and the runs that wait are kept and run in turn, each reading what the one before it wrote. Every
+other event never waits: a bot's comment (the reviewer's own included), a review thread's first comment, a comment
+that mentions nobody, a merge queue's group, a push and a manual start.
 
 ## Every input and secret
 
@@ -106,7 +119,7 @@ one is optional ([Versions](versions.md)).
 | `model-prefix` | `bedrock` only: the inference profile prefix |
 | `model-max-output` | the most output tokens a turn may ask for, when your model or server allows fewer than the reviewer asks |
 | `aws-region` | the Bedrock region. Required for `bedrock` |
-| `runs-on` | where the jobs run, when not on GitHub's own runners (`ubuntu-latest` when not given): one runner label, or a JSON list of labels in a string such as `'["self-hosted","linux"]'`; a YAML list is refused ([Where the job runs](#where-the-job-runs)) |
+| `runs-on` | where the job runs, when not on GitHub's own runners (`ubuntu-latest` when not given): one runner label, or a JSON list of labels in a string such as `'["self-hosted","linux"]'`; a YAML list is refused ([Where the job runs](#where-the-job-runs)) |
 | `ironbee-api-url` | IronBee's API address; empty means the default public API. Only for a regional or test endpoint IronBee gives you |
 | `ironbee-run-reports` | `true` when not given. `false` tells IronBee only that a run started, with nothing of the pull request and no complete, and the console then lists no pull requests or runs for the repository ([What reaches IronBee](what-reaches-ironbee.md#with-run-reports-off)) |
 | `knowledge-repository` | your rules repository, `owner/name` ([Settings and rules](settings-and-rules.md#the-rules-repository)) |
@@ -119,7 +132,7 @@ one is optional ([Versions](versions.md)).
 
 | Secret | For |
 |---|---|
-| `ironbee-api-key` | IronBee's API. Needed for every review, and for the register job |
+| `ironbee-api-key` | IronBee's API. Needed for every review, and for the register step |
 | `registry-token` | the image's registry. Needed for every review |
 | `model-key` | the model's key. Required at a provider's own endpoint, optional with `model-url` ([Models](models.md)) |
 | `model-headers` | extra headers for the model's endpoint, one `name=value` a line |
@@ -133,10 +146,12 @@ for a repository that IronBee left without a project ([step 3](#a-repository-lef
 other repository the console's values apply, even when they are empty.
 
 **How the workflow treats them.** A comment's body, a title or a branch name reaches a step of the workflow only
-through an environment variable or GitHub's event file, never pasted into a script. The first job is told whether
-the API key and the registry token are set, never given either. Your App's key reaches the first and third jobs only in the step that writes a
-check. The model's key, its headers and its certificates reach the runner's container as environment variables, and
-the rules repository's input, ref and token reach the runner alone.
+through an environment variable or GitHub's event file, never pasted into a script. The decide step is told whether
+the API key and the registry token are set, never given either. The registry token reaches only the review step,
+which signs in to Docker Hub with it through standard input, for the pull alone. Your App's key reaches the review
+step and, beside it, only the two steps that mint a token for a `neutral` check. The model's key, its headers and its
+certificates reach the runner's container as environment variables, by name, never on a command line, and the rules
+repository's input, ref and token reach the runner alone.
 
 ## 3. Register the repository
 
@@ -144,8 +159,8 @@ A registered repository has a project in IronBee: its settings, rules and memori
 the console lists its pull requests and their runs. Registering is one call to IronBee's API with the repository's
 path, and there are three ways to make it:
 
-- **The workflow file reaching the default branch.** The `push` trigger runs the register job when the file is
-  pushed to the default branch, and `workflow_dispatch` runs it when you start the workflow by hand. The job reads
+- **The workflow file reaching the default branch.** The `push` trigger runs the register step when the file is
+  pushed to the default branch, and `workflow_dispatch` runs it when you start the workflow by hand. The step reads
   nothing of the event but the repository's path and writes nothing to GitHub. Its log says the project's id and
   whether it was made, or why the repository was left without one. Of the licence, it prints only the warnings a run
   prints: the log of a public repository is public, and your contract's numbers are not for it.
@@ -191,9 +206,9 @@ The answer:
 The call is refused, and nothing changes, when the self-hosted runner is not enabled on the account
 (`SELF_HOSTED_RUNNER_NOT_ENABLED`), when the account is suspended (`SELF_HOSTED_RUNNER_SUSPENDED`), when the licence
 has ended (`SELF_HOSTED_RUNNER_LICENCE_ENDED`), when IronBee's cloud product already reviews the repository
-(`REPOSITORY_REVIEWED_BY_CLOUD`), and, from the register job, when its runner version is no longer served
-(`RUNNER_VERSION_UNSUPPORTED`). The register job then fails with the reason, so a wrong setup is found on the day of
-the install. A repository the register job could not register is registered by its first run.
+(`REPOSITORY_REVIEWED_BY_CLOUD`), and, from the register step, when its runner version is no longer served
+(`RUNNER_VERSION_UNSUPPORTED`). The register step then fails with the reason, so a wrong setup is found on the day of
+the install. A repository the register step could not register is registered by its first run.
 
 ### A repository left without a project
 
@@ -277,21 +292,27 @@ On GitHub's own runners or on your self-hosted ones.
 - **A model inside your network needs a self-hosted runner there.** Name it in `runs-on`: one label
   (`runs-on: my-runner`), or a JSON list of labels in a string (`runs-on: '["self-hosted","linux"]'`). A YAML list is
   refused by the workflow's validation. Such a runner connects outward only.
-- A self-hosted runner needs Linux with a container runtime, on `amd64` or `arm64`, and `bash`, `jq`, `gh`, `curl` and
-  `docker`. The jobs use those, the image, `actions/checkout` (every job but the review job) and, under your own App,
-  GitHub's own action that mints an App token.
+- A self-hosted runner needs Linux with Docker, on `amd64` or `arm64`, and `bash`, `jq`, `gh`, `curl` and `docker`.
+  The job uses those, the image, `actions/checkout` and, under your own App, GitHub's own action that mints an App
+  token. The review step runs the image with `docker run` as the runner's own user, and mounts the event file and the
+  step's outputs file into it by their paths on the runner: a runner that is itself a container must reach a Docker
+  daemon that sees those paths at the same place. A proxy set on the runner's machine (`HTTPS_PROXY`, `NO_PROXY` and
+  their lowercase forms) is handed on to the runner.
+- **Rootless Docker** works: the container then runs as its own root, which is the runner's user on the machine.
+  **Docker with `userns-remap`** is not supported: the container's users could not write the step's outputs file, so
+  the review step fails at once, naming it, before it pulls anything.
 - **On a public repository,** a fork's pull request runs its own copy of the workflow file on the runner that file
   names, so use a self-hosted runner only on private repositories, or require approval before workflows from forks
   run.
 
 What the runner connects to: GitHub, your model's endpoint and IronBee's API (`api.service.ironbee.ai`, or the
 address in `ironbee-api-url`), and nothing else; with your Jev key, also Jev's endpoint ([Jev](jev.md)). The image is
-pulled from Docker Hub by the CI before the job's container starts. Where the job may connect beyond that is your
-network's policy.
+pulled from Docker Hub by the review step, by its digest. Where the job may connect beyond that is your network's
+policy.
 
 An organization that does not allow workflows from outside its own repositories must copy this whole repository at
 a release, the workflow file and `scripts/`, into a repository the calling job's token can read: the calling
-repository itself, or a public one. The jobs fetch `scripts/` from the workflow's own repository with that token,
+repository itself, or a public one. The job fetches `scripts/` from the workflow's own repository with that token,
 and a private copy elsewhere cannot be read by the caller's `GITHUB_TOKEN`. Call the copy in place of
 `ironbee-ai/ironbee-github-runner`.
 

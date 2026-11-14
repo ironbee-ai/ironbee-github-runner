@@ -40,7 +40,7 @@ nothing.
 | Missing or invalid credentials | `UNAUTHORIZED` | the `ironbee-api-key` secret is wrong, or a rotated key past its grace period. A code the runner does not know is shown with IronBee's own text, as here |
 | IronBee could not be reached, so this pull request was not reviewed. | — | the job is red. Check that the job can reach IronBee's API (`api.service.ironbee.ai`, or the address in `ironbee-api-url`), then re-run the workflow |
 
-A `failure` an earlier review wrote stays on its head: a refused run never weakens it.
+An `action_required` an earlier review wrote stays on its head: a refused run never weakens it.
 
 ## The `neutral` check names a setting or the pull request
 
@@ -62,16 +62,18 @@ A `failure` an earlier review wrote stays on its head: a refused run never weake
 
 A review someone asks for by a command passes every gate but the one for forks.
 
-## The workflow's other jobs wrote the check
+## The workflow's other steps wrote the check
+
+The workflow is one job, `Review`; besides the runner, two of its steps write a `neutral` check.
 
 - **"The review did not run; the workflow's log says why. A re-run of the workflow, or `@ironbee-ai review`, reviews
-  this head."**, from the workflow's third job: the runner's job did not succeed and could not say why itself. The
-  image could not be pulled (the registry down, a wrong or deleted `registry-token`), its container did not start, or
-  the job was killed, timed out (the runner's job stops after two hours), or cancelled because more than 100 runs of
-  the pull request were waiting. Check the job's log and the `registry-token` secret, then re-run the workflow.
+  this head."**, from the fallback step: the review step did not succeed and could not say why itself. The image
+  could not be pulled (the registry down, a wrong or deleted `registry-token`), its container did not start, or the
+  step was cancelled or timed out (the review step stops after two hours). Check the job's log and the
+  `registry-token` secret, then re-run the workflow.
 - **"This run of the workflow lacked the `ironbee-api-key` or `registry-token` secret, so IronBee did not review it.
   GitHub gives a pull request Dependabot opens none of the repository's secrets unless Dependabot is given them."**,
-  from the first job: a pull request whose
+  from the decide step: a pull request whose
   workflow runs without the repository's secrets, such as Dependabot's ([Identity](identity.md#dependabot)), or whose
   workflow file passes no `ironbee-api-key` or no `registry-token` (below).
 - **"Reviewed on its pull requests"**, on a merge queue group's commit: the group is not reviewed again, since each
@@ -79,22 +81,22 @@ A review someone asks for by a command passes every gate but the one for forks.
 
 ### The `ironbee-api-key` or `registry-token` secret is not given
 
-The first job knows only whether the API key and the registry token are set, and a run without either one is a run
+The decide step knows only whether the API key and the registry token are set, and a run without either one is a run
 given no secrets: without the key the runner could not start, and without the token its image could not be pulled.
 The runner never starts:
 
-- on a pull request, the first job writes the `neutral` above ("This run of the workflow lacked the `ironbee-api-key`
+- on a pull request, the decide step writes the `neutral` above ("This run of the workflow lacked the `ironbee-api-key`
   or `registry-token` secret…"); under your own App it writes it only when the App's id and key are given, and otherwise
   nothing;
 - on a comment, the run ends with `the run was given no secrets`, and nothing is written.
 
 Check that the workflow file passes both `ironbee-api-key` and `registry-token`, and that the secrets they name
-exist. The register job pulls no image and needs only the API key; without it, it says
+exist. The register step pulls no image and needs only the API key; without it, it says
 `ironbee-api-key: no API key was given (IRONBEE_API_KEY)`.
 
 ### Your own App's three inputs
 
-`app-id`, `app-private-key` and `app-slug` go together. The workflow's first job checks them before anything else,
+`app-id`, `app-private-key` and `app-slug` go together. The workflow's decide step checks them before anything else,
 and writes no check:
 
 - **`app-slug` without `app-id` or without `app-private-key`:** in a run that has its secrets, the job fails with
@@ -149,10 +151,15 @@ unavailable; the review goes on.
 summarizes has already concluded. A run killed between its review and its check leaves the head as it was, and
 nothing writes `neutral` over a head that holds a review of the reviewer's: a re-run of the pull request's run, or
 `@ironbee-ai review`, concludes from the texts. A run that read nothing new on its head posts no review of its own
-there; when its check is a `failure`, it posts the short review first
+there; when its check is an `action_required`, it posts the short review first
 ([The short review](required-check.md#how-it-concludes)), so the same holds for it. A follow-up killed after its
-replies and before its review counts as a round that did not run: the replies stay, the workflow's third job writes
-`neutral`, and the next run reads them and goes on.
+replies and before its review counts as a round that did not run: the replies stay, the workflow's fallback step
+writes `neutral`, and the next run reads them and goes on.
+
+**A pull request's head with no check at all.** A run cancelled before its job started runs none of its steps, the
+fallback's included: one cancelled by hand while it waited for the pull request's queue, or by GitHub when more than
+100 runs of the pull request were waiting, and a job whose machine was lost. Its head gets no `IronBee review`, and a
+required check waits for it: re-run the workflow, or ask `@ironbee-ai review`.
 
 ## Warnings in the log
 
@@ -169,8 +176,10 @@ replies and before its review counts as a round that did not run: the replies st
 ## No run, no review, or no check
 
 - **A comment that is not for the reviewer, a bot's comment, a comment from someone whose words the rules do not
-  hear, and anything on a fork's pull request** end in the workflow's first job: no image is pulled, no place is taken
-  in the pull request's queue, and nothing is written. A command counts only from someone who may write to the
+  hear, and anything on a fork's pull request** end in the workflow's decide step: no image is pulled and nothing is
+  written. A bot's comment, a review thread's first comment and a conversation comment with no `@` in it take no
+  place in the pull request's queue; a person's comment that mentions someone else, and a person's reply on a thread
+  that is not the reviewer's, wait for the run before them like any other, then end there. A command counts only from someone who may write to the
   repository; a question on a thread only from the pull request's author and the repository's owners, members and
   collaborators. Under the job token, `@github-actions` is never a command.
 - **Words addressed to the reviewer that its own rules turn away** write nothing; the run reports `not_addressed`.
@@ -200,9 +209,9 @@ replies and before its review counts as a round that did not run: the replies st
 - **Someone edited or deleted one of the reviewer's comments:** the state it carried goes with it, and the next round
   reads what is left.
 
-## The register job failed
+## The register step failed
 
-The job fails with the reason when IronBee refuses the registration (the feature off, suspended, the licence ended, a
+The step fails with the reason when IronBee refuses the registration (the feature off, suspended, the licence ended, a
 wrong key, a version no longer served) or cannot be reached, and nothing else changes. The log says
 `IronBee refused the registration (<code>): <sentence>` or `IronBee: no answer after 3 attempts (<why>)`; with no API
 key given, `ironbee-api-key: no API key was given (IRONBEE_API_KEY)`. Fix the cause and start the workflow by hand; a

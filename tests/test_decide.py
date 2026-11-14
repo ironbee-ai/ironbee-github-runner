@@ -1,4 +1,4 @@
-"""Job 1 (scripts/decide.sh): one test per event kind and per filter, over the recorded events."""
+"""The decide step (scripts/decide.sh): one test per event kind and per filter, over the recorded events."""
 from __future__ import annotations
 
 import unittest

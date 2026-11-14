@@ -17,6 +17,11 @@ one that does not verify with the key in this repository was signed for IronBee'
 A release named exactly stays in your workflow file until you move it. Meanwhile IronBee's side changes, and the
 release you are on keeps working: every change on IronBee's side is tested against each version still served.
 
+**Going back from a release to a pre-release is not supported.** From `v1.0.0` a review that holds the merge concludes
+`action_required`; the pre-releases `v1.0.0-rc.1` and `-rc.2` wrote `failure` and know no other word for it, so one of
+them run on a pull request a release reviewed would not take that check for a review's: the second look after its
+`neutral` could turn it `neutral`, and its retract would leave it as it is. A release reads the pre-releases' `failure`, so moving forward is safe.
+
 ## What a version's number tells you
 
 | Part | Raised when | What it means for you |

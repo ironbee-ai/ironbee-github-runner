@@ -1,5 +1,5 @@
 # Shared by the workflow's scripts, sourced and never run: the log, GitHub's API through gh, who we are, and what of
-# ours a commit holds. Needs bash, jq and gh (curl for the registration). Every value of an event or of an answer is
+# ours a commit holds. Needs bash, jq and gh (curl for the registration, docker for the review). Every value of an event or of an answer is
 # read with jq from a file; none is ever evaluated as code.
 # shellcheck disable=SC2034  # the values set here are read by the scripts that source this file
 
@@ -36,7 +36,7 @@ fail() {
 needs() {
   local tool
   for tool in "$@"; do
-    command -v "$tool" > /dev/null || fail 2 "$tool is not installed on this runner; the workflow's jobs need bash, jq, gh and curl"
+    command -v "$tool" > /dev/null || fail 2 "$tool is not installed on this runner; the workflow needs bash, jq, gh, curl and docker"
   done
 }
 

@@ -33,7 +33,7 @@ def index(**platforms) -> dict:
 
 
 def stamped(text: str, digest: str, version: str) -> str:
-    text = re.sub(rf"(image: {re.escape(IMAGE)}@)sha256:[0-9a-f]{{64}}", rf"\g<1>{digest}", text)
+    text = re.sub(rf"(IRONBEE_IMAGE: {re.escape(IMAGE)}@)sha256:[0-9a-f]{{64}}", rf"\g<1>{digest}", text)
     return re.sub(r"(IRONBEE_RUNNER_VERSION: )\d+\.\d+\.\d+", rf"\g<1>{version}", text)
 
 
@@ -222,7 +222,7 @@ class Stamp(Release):
         changed = [(a, b) for a, b in zip(before, after) if a != b]
         self.assertEqual(len(changed), 2, changed)
         (_, image), (old, new) = sorted(changed, key=lambda c: "IRONBEE_RUNNER_VERSION" in c[0])
-        self.assertEqual(image.strip(), f"image: {IMAGE}@{OTHER}")
+        self.assertEqual(image.strip(), f"IRONBEE_IMAGE: {IMAGE}@{OTHER}")
         self.assertRegex(new, r"^\s+IRONBEE_RUNNER_VERSION: 1\.10\.0\s+# ")
         self.assertEqual(new.index("#"), old.index("#"))      # the comment keeps its column
         self.assertIn(f"stamped {WORKFLOW}: {IMAGE}@{OTHER}", ran.out)
@@ -239,15 +239,25 @@ class Stamp(Release):
         path.write_text(path.read_text() + f"  other:\n    runs-on: ubuntu-latest\n    container:\n{other}\n")
         self.assertEqual(self.release("stamp").code, 0)
         self.assertIn(other + "\n", path.read_text())
-        self.assertIn(f"image: {IMAGE}@{DIGEST}", path.read_text())
+        self.assertIn(f"IRONBEE_IMAGE: {IMAGE}@{DIGEST}", path.read_text())
+
+    def test_a_job_containers_image_line_of_the_releases_before_the_one_job(self):
+        """v1.0.0-rc.1 and -rc.2 named the image as a job container's `image:`: a run again of such a release reads it."""
+        path = self.work / WORKFLOW
+        text = path.read_text().replace(f"IRONBEE_IMAGE: {IMAGE}@", f"image: {IMAGE}@")
+        path.write_text(text)
+        ran = self.release("stamp", digest=OTHER)
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertIn(f"image: {IMAGE}@{OTHER}", path.read_text())
 
     def test_a_line_to_stamp_found_twice_or_never(self):
         text = (ROOT / WORKFLOW).read_text()
-        image = next(line for line in text.splitlines() if f"image: {IMAGE}@" in line)
+        image = next(line for line in text.splitlines() if f"IRONBEE_IMAGE: {IMAGE}@" in line)
         version = next(line for line in text.splitlines() if "IRONBEE_RUNNER_VERSION:" in line)
         variants = {"the image twice": (text.replace(image, image + "\n" + image), "the image line naming"),
                     "no image": (text.replace(image, ""), "the image line naming"),
-                    "the image quoted": (text.replace(image, image.replace("image: ", 'image: "') + '"'), "the image line naming"),
+                    "the image quoted": (text.replace(image, image.replace("IRONBEE_IMAGE: ", 'IRONBEE_IMAGE: "') + '"'), "the image line naming"),
+                    "the image under both keys": (text.replace(image, image + "\n" + image.replace("IRONBEE_IMAGE:", "image:")), "the image line naming"),
                     "a short digest": (text.replace(image, image[:-1]), "the image line naming"),
                     "the version twice": (text.replace(version, version + "\n" + version), "IRONBEE_RUNNER_VERSION line"),
                     "the version quoted": (text.replace(version, version.replace(": 1.0.0", ': "1.0.0"')), "IRONBEE_RUNNER_VERSION line")}
@@ -438,7 +448,7 @@ class Publish(Release):
         for tag, message in (("v1.0.0-rc.2", "1.0.0-rc.2: a pre-release for IronBee's own tests"), ("v0", "v0: the newest pre-release (v1.0.0-rc.2)")):
             self.assertEqual(self.git("cat-file", "-t", f"refs/tags/{tag}", cwd=self.origin), "tag")     # annotated
             self.assertEqual(self.git("tag", "-l", "--format=%(taggername) %(taggeremail)|%(contents:subject)", tag, cwd=self.origin), f"{BOT}|{message}")
-        self.assertIn(f"image: {IMAGE}@{DIGEST}", self.git("show", f"v1.0.0-rc.2:{WORKFLOW}", cwd=self.origin))
+        self.assertIn(f"IRONBEE_IMAGE: {IMAGE}@{DIGEST}", self.git("show", f"v1.0.0-rc.2:{WORKFLOW}", cwd=self.origin))
         self.assertEqual(self.git("diff", "--name-only", base, head, cwd=self.origin), WORKFLOW)
         self.assertEqual(self.git("status", "--porcelain"), "")
 

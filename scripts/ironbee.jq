@@ -37,6 +37,10 @@ def ours_review($login; $head): .commit_id == $head and ours_post($login);
 # A check run of ours: the gate's name, written by our identity's App.
 def ours_check($slug): .name == "IronBee review" and (((.app.slug // "") | ascii_downcase) == ($slug | ascii_downcase));
 
+# A review's conclusion on a check of ours: success, or action_required while findings hold the merge; failure is what a
+# released pre-release wrote for that.
+def review_conclusion: . == "success" or . == "action_required" or . == "failure";
+
 # A pull request from a fork: its head in another repository, or in one deleted since.
 def forked:
   ((.head.repo.full_name // "") | ascii_downcase) as $h | ((.base.repo.full_name // "") | ascii_downcase) as $b
