@@ -579,6 +579,12 @@ class Publish(Release):
         self.assertEqual(ran.code, 0, ran.out)
         self.assertEqual(self.ref("refs/tags/v0"), self.ref("refs/tags/v1.0.0-rc.2"))
 
+    def test_an_older_lines_release_with_no_v0_anywhere(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0")                                                          # tagged before v0 existed
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual((self.ref("refs/tags/v0"), self.ref("refs/tags/v1")), ("", self.ref("refs/tags/v1.0.0")))
+
     def test_an_older_lines_release_leaves_a_hand_moved_v0_alone(self):
         self.tag("v2.0.0-rc.1", version="2.0.0"); self.git("tag", "-a", "v0", "-m", "by hand", "main~1"); self.git("push", "--quiet", "origin", "v0")
         by_hand = self.ref("refs/tags/v0")

@@ -222,7 +222,8 @@ step_plan() {
   local workflow image newest moves keep
   tools git
   [ "${GITHUB_REF:-}" = refs/heads/main ] || fail 2 "a release runs from main, not ${GITHUB_REF:-an unknown ref}"
-  fresh_tags
+  # In the workflow the checkout has just fetched every tag, with no credential kept; by hand, a clone may be stale.
+  [ -n "${GITHUB_ACTIONS:-}" ] || fresh_tags
   if [ -n "$prerelease" ] && git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
     fail 1 "v$version is released: it takes no more pre-releases"
   fi
@@ -370,7 +371,7 @@ from_of() {
 }
 
 step_publish() {
-  local workflow was="" latest refs leases moves keep froms
+  local workflow was="" latest refs leases moves keep froms now
   tools git
   fresh_tags
   if pushed; then
@@ -404,11 +405,14 @@ step_publish() {
     froms="${froms:+$froms, }v0 from $(from_of "$latest")"
     bot tag -f -a v0 -m "v0: the newest release or pre-release ($tag)" > /dev/null
   fi
-  # v0 rides the push either way under its lease; one that stays is an unchanged ref, which carries no update for the
-  # remote to check, so it is read again right before the push.
-  refs+=("refs/tags/v0")
-  leases+=("--force-with-lease=refs/tags/v0:$latest")
-  [ "$(git ls-remote --tags origin refs/tags/v0 | awk '$2 == "refs/tags/v0" { print $1 }')" = "$latest" ] \
+  # v0 rides the push under its lease whenever there is one, moved or where it was; one that stays is an unchanged ref,
+  # which carries no update for the remote to check, so it is read again right before the push.
+  if git rev-parse -q --verify "refs/tags/v0" > /dev/null; then
+    refs+=("refs/tags/v0")
+    leases+=("--force-with-lease=refs/tags/v0:$latest")
+  fi
+  now=$(git ls-remote --tags origin refs/tags/v0) || fail 1 "origin's tags could not be read, and nothing was pushed; run the release again"
+  [ "$(awk '$2 == "refs/tags/v0" { print $1 }' <<< "$now")" = "$latest" ] \
     || fail 1 "the push was refused and nothing was pushed: v0 moved meanwhile; run the release again"
   # All or nothing. main only moves forward; the tag is new; each floating tag moves only from where it was read.
   git push --quiet --atomic ${leases[@]+"${leases[@]}"} origin "${refs[@]}" \
