@@ -130,18 +130,18 @@ class Inputs(Release):
         names = {"1.2.3-rc.4": "tag v1.2.3-rc.4, version 1.2.3 (rc.4), floating tag v0",
                  "0.3.0-rc.1": "tag v0.3.0-rc.1, version 0.3.0 (rc.1), floating tag v0",
                  "1.2.3-rc.12": "tag v1.2.3-rc.12, version 1.2.3 (rc.12), floating tag v0",
-                 "1.2.3": "tag v1.2.3, version 1.2.3, floating tag v1",
-                 "12.0.10": "tag v12.0.10, version 12.0.10, floating tag v12"}
+                 "1.2.3": "tag v1.2.3, version 1.2.3, floating tag v1 and v0",
+                 "12.0.10": "tag v12.0.10, version 12.0.10, floating tag v12 and v0"}
         for tag, line in names.items():
             with self.subTest(tag=tag):
                 ran = self.release("plan", tag=tag)
                 self.assertEqual(ran.code, 0, ran.out)
-                self.assertIn(line, ran.out)
+                self.assertTrue(any(out_line.endswith(line) for out_line in ran.out.splitlines()), ran.out)   # the whole line: nothing after the tag
 
     def test_major_version_0_is_never_released(self):
         ran = self.release("plan", tag="0.9.0")
         self.assertEqual(ran.code, 2)
-        self.assertIn("v0 is the pre-releases' tag", ran.out)
+        self.assertIn("v0 is the tag of the newest release or pre-release", ran.out)
 
     def test_the_steps_and_their_arguments(self):
         for args in ((), ("nope",), ("plan", "x"), ("image",), ("image", "amd64", "x")):
@@ -445,21 +445,30 @@ class Publish(Release):
         self.assertEqual(self.git("rev-parse", f"{head}~1", cwd=self.origin), base)
         self.assertEqual(self.git("log", "-1", "--format=%s|%an <%ae>|%cn <%ce>", head, cwd=self.origin), f"chore(release): v1.0.0-rc.2|{BOT}|{BOT}")
         self.assertEqual((self.ref("refs/tags/v1.0.0-rc.2"), self.ref("refs/tags/v0")), (head, head))
-        for tag, message in (("v1.0.0-rc.2", "1.0.0-rc.2: a pre-release for IronBee's own tests"), ("v0", "v0: the newest pre-release (v1.0.0-rc.2)")):
+        for tag, message in (("v1.0.0-rc.2", "1.0.0-rc.2: a pre-release for IronBee's own tests"), ("v0", "v0: the newest release or pre-release (v1.0.0-rc.2)")):
             self.assertEqual(self.git("cat-file", "-t", f"refs/tags/{tag}", cwd=self.origin), "tag")     # annotated
             self.assertEqual(self.git("tag", "-l", "--format=%(taggername) %(taggeremail)|%(contents:subject)", tag, cwd=self.origin), f"{BOT}|{message}")
         self.assertIn(f"IRONBEE_IMAGE: {IMAGE}@{DIGEST}", self.git("show", f"v1.0.0-rc.2:{WORKFLOW}", cwd=self.origin))
         self.assertEqual(self.git("diff", "--name-only", base, head, cwd=self.origin), WORKFLOW)
         self.assertEqual(self.git("status", "--porcelain"), "")
 
-    def test_a_release_moves_its_major_versions_tag(self):
+    def test_a_release_moves_its_major_versions_tag_and_v0(self):
         self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
-        v0 = self.ref("refs/tags/v0")
         ran = self.release("publish", tag="1.0.0")
         self.assertEqual(ran.code, 0, ran.out)
         head = self.ref("main")
-        self.assertEqual((self.ref("refs/tags/v1.0.0"), self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, head, v0))
+        self.assertEqual((self.ref("refs/tags/v1.0.0"), self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, head, head))
         self.assertEqual(self.git("tag", "-l", "--format=%(contents:subject)", "v1", cwd=self.origin), "v1: the newest release of major version 1 (v1.0.0)")
+        self.assertEqual(self.git("tag", "-l", "--format=%(contents:subject)", "v0", cwd=self.origin), "v0: the newest release or pre-release (v1.0.0)")
+
+    def test_a_release_whose_v0_moved_meanwhile_pushes_nothing(self):
+        self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
+        self.git("tag", "-f", "-a", "v0", "-m", "elsewhere", "main~1", cwd=self.origin)
+        before = self.refs()
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn("nothing was pushed", ran.out)
+        self.assertEqual(self.refs(), before)
 
     def test_a_pre_release_promoted_as_it_is_is_an_empty_commit(self):
         self.tag("v1.0.0-rc.2")

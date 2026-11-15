@@ -61,8 +61,8 @@ tools() {
 }
 
 # The input by its form, and what comes from it: version (MAJOR.MINOR.PATCH, what the image's runner reports),
-# prerelease (rc.<N>, or empty for a release), tag (the repository's, v<image tag>) and floating (v0 follows the
-# pre-releases, v<MAJOR> the releases of that major version).
+# prerelease (rc.<N>, or empty for a release), tag (the repository's, v<image tag>) and floating (v<MAJOR> follows the
+# releases of that major version; v0, the newest of every release and pre-release, moves with each).
 inputs() {
   local lines
   image_tag=${IRONBEE_IMAGE_TAG:-}
@@ -74,7 +74,7 @@ inputs() {
   if [ -n "$prerelease" ]; then
     floating=v0
   else
-    [ "$major" != 0 ] || fail 2 "a release of major version 0: v0 is the pre-releases' tag"
+    [ "$major" != 0 ] || fail 2 "a release of major version 0: v0 is the tag of the newest release or pre-release"
     floating=v$major
   fi
   lines=$(printf '%s\n' "$WORKFLOWS" | grep -c .)
@@ -202,7 +202,8 @@ step_plan() {
   else
     say "$tag is new${newest:+; the newest release is v$newest}"
   fi
-  say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag $floating"
+  if [ -n "$prerelease" ]; then also=""; else also=" and v0"; fi
+  say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag $floating$also"
 }
 
 # The tag is read here alone. A registry's tag can be moved, so from here on the release names the image by the
@@ -319,7 +320,7 @@ step_token() {
 }
 
 step_publish() {
-  local workflow was moved=""
+  local workflow was latest moved=""
   tools git
   if pushed; then
     notice "$tag is already pushed with this image and version: nothing is moved"
@@ -328,6 +329,7 @@ step_publish() {
   [ -z "$(git status --porcelain --untracked-files=no)" ] || fail 2 "the working tree holds changes: a release commits its stamp alone"
   step_stamp
   was=$(git rev-parse -q --verify "refs/tags/$floating" || true)
+  latest=$(git rev-parse -q --verify "refs/tags/v0" || true)
   if [ -n "$was" ]; then
     moved=" from $(git rev-parse --short "$was^{commit}")"
   fi
@@ -338,17 +340,21 @@ step_publish() {
   bot commit --quiet --allow-empty -m "chore(release): $tag"
   if [ -n "$prerelease" ]; then
     bot tag -a "$tag" -m "$version-$prerelease: a pre-release for IronBee's own tests"
-    bot tag -f -a "$floating" -m "$floating: the newest pre-release ($tag)" > /dev/null
+    bot tag -f -a "$floating" -m "$floating: the newest release or pre-release ($tag)" > /dev/null
   else
     bot tag -a "$tag" -m "$version: a release"
     bot tag -f -a "$floating" -m "$floating: the newest release of major version $major ($tag)" > /dev/null
+    bot tag -f -a v0 -m "v0: the newest release or pre-release ($tag)" > /dev/null
   fi
-  # All or nothing. main only moves forward; the tag is new; the floating tag moves only from where it was read.
-  if ! git push --quiet --atomic --force-with-lease="refs/tags/$floating:$was" origin \
-    HEAD:refs/heads/main "refs/tags/$tag" "refs/tags/$floating"; then
-    fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
+  # All or nothing. main only moves forward; the tag is new; each floating tag moves only from where it was read.
+  if [ -n "$prerelease" ]; then
+    git push --quiet --atomic --force-with-lease="refs/tags/$floating:$was" origin \
+      HEAD:refs/heads/main "refs/tags/$tag" "refs/tags/$floating" || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
+  else
+    git push --quiet --atomic --force-with-lease="refs/tags/$floating:$was" --force-with-lease="refs/tags/v0:$latest" origin \
+      HEAD:refs/heads/main "refs/tags/$tag" "refs/tags/$floating" "refs/tags/v0" || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
   fi
-  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag; $floating moved to it$moved"
+  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag; $floating$also moved to it$moved"
 }
 
 # The GitHub release's text: the image by digest, its platforms, and how to verify it.

@@ -10,7 +10,8 @@ workflow names its image by digest. What follows the `@` in your workflow file's
 | `<commit id of a release>` | that release, without relying on a tag's word | never: the commit names the image by digest too |
 
 **Pre-releases.** Tags of the form `v<version>-rc.<N>` are builds for IronBee's own tests before the release
-`v<version>`, marked as pre-releases on GitHub and not for production; `v0` follows the newest of them. Their images
+`v<version>`, marked as pre-releases on GitHub and not for production. `v0` follows the newest of every release and
+pre-release, for IronBee's own demos; name a release or `v<MAJOR>` in production. Their images
 are verified the same way, by the digest their workflow file names ([Verifying the image](verifying-the-image.md));
 one that does not verify with the key in this repository was signed for IronBee's own tests.
 

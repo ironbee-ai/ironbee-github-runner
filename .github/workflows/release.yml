@@ -9,7 +9,7 @@
 #   image    each platform's image pulled by digest and run with no network on a runner of its own architecture: its
 #            runner reports the version
 #   publish  the push's token checked first; every listed workflow stamped with the digest and the version, committed
-#            on main, tagged v<image-tag>, the floating tag moved (v0 for a pre-release, v<MAJOR> for a release), all
+#            on main, tagged v<image-tag>, the floating tags moved (v0 at every release and pre-release, v<MAJOR> at a release), all
 #            pushed at once; then the GitHub release
 #
 # A run whose tag is already pushed with this image and version moves nothing and only makes the GitHub release when it
