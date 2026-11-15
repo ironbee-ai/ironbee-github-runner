@@ -1,0 +1,69 @@
+{
+  "ref": "refs/heads/main",
+  "before": "4444444444444444444444444444444444444444",
+  "after": "5555555555555555555555555555555555555555",
+  "repository": {
+    "id": 4401,
+    "node_id": "R_kgDOAAARMQ",
+    "name": "widgets",
+    "full_name": "acme/widgets",
+    "private": true,
+    "owner": {
+      "login": "acme",
+      "id": 9100,
+      "node_id": "O_kgDOAAAjjA",
+      "url": "https://api.github.com/users/acme",
+      "html_url": "https://github.com/acme",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/acme/widgets",
+    "description": "Widgets.",
+    "fork": false,
+    "url": "https://api.github.com/repos/acme/widgets",
+    "default_branch": "main",
+    "visibility": "private",
+    "archived": false
+  },
+  "pusher": {
+    "name": "bob",
+    "email": "bob@acme.example"
+  },
+  "organization": {
+    "login": "acme",
+    "id": 9100
+  },
+  "sender": {
+    "login": "bob",
+    "id": 7001,
+    "node_id": "U_kgDO7001",
+    "avatar_url": "https://avatars.githubusercontent.com/u/7001?v=4",
+    "url": "https://api.github.com/users/bob",
+    "html_url": "https://github.com/bob",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/acme/widgets/compare/444444444444...555555555555",
+  "commits": [
+    {
+      "id": "5555555555555555555555555555555555555555",
+      "message": "Add the IronBee review workflow",
+      "timestamp": "2026-11-13T08:00:00Z",
+      "added": [
+        ".github/workflows/ironbee-review.yml"
+      ],
+      "removed": [],
+      "modified": []
+    }
+  ],
+  "head_commit": {
+    "id": "5555555555555555555555555555555555555555",
+    "message": "Add the IronBee review workflow",
+    "timestamp": "2026-11-13T08:00:00Z"
+  }
+}

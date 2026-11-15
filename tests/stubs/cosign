@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""A stand-in for cosign in the release's tests: `cosign verify --key KEY REF` succeeds when $STUB_COSIGN_STATE (a JSON
+file: {image@digest: [the public keys that signed it, as their files hold them]}) lists KEY's text for REF. Each call's
+arguments are recorded in $STUB_COSIGN_CALLS. No network."""
+import json
+import os
+import sys
+
+
+def main(argv: list) -> int:
+    with open(os.environ["STUB_COSIGN_CALLS"], "a") as f: f.write(json.dumps(argv) + "\n")
+    if argv[:1] != ["verify"] or "--key" not in argv:
+        sys.stderr.write("stub cosign: only `cosign verify --key` is stubbed\n"); return 2
+    key, ref = argv[argv.index("--key") + 1], argv[-1]
+    with open(os.environ["STUB_COSIGN_STATE"]) as f: signed = json.load(f)
+    with open(key) as f: text = f.read()
+    if text in signed.get(ref, []):
+        print(json.dumps([{"critical": {"image": {"docker-manifest-digest": ref.split("@", 1)[1]}}}])); return 0
+    sys.stderr.write("Error: no matching signatures: invalid signature when validating ASN.1 encoded signature\n"); return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

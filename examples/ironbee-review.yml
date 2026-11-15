@@ -1,0 +1,39 @@
+# .github/workflows/ironbee-review.yml in the reviewed repository: the triggers, the permissions and the call.
+name: IronBee
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  merge_group:
+  push:                           # registers the repository when this file reaches the default branch
+    branches: [main]              #   the repository's default branch
+    paths: ['.github/workflows/ironbee-review.yml']
+  workflow_dispatch:              # and when the workflow is started by hand
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  issues: read
+jobs:
+  code-review:
+    name: Code Review
+    uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
+    with:
+      model-provider: anthropic
+      # model-name: one model for every task; required for `openai` with `model-url`
+      # runs-on: a self-hosted runner's label (or a JSON list of labels), when the model is inside the network
+      # knowledge-repository: the rules repository (owner/name)
+      # ignore-paths, target-branches, skip-labels, skip-title-keywords: for a repository without a project
+      # app-slug: the slug of your own GitHub App, when the reviewer runs as that App
+      # ironbee-api-url: IronBee's API address; the public API when empty
+      # ironbee-run-reports: "false" tells IronBee only that a run started: nothing of the pull request, no complete
+    secrets:
+      ironbee-api-key: ${{ secrets.IRONBEE_API_KEY }}
+      registry-token: ${{ secrets.IRONBEE_REGISTRY_TOKEN }}
+      model-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      # knowledge-token: a read-only token for the rules repository, under the job token
+      # app-id: ${{ secrets.IRONBEE_APP_ID }}                  # with app-slug, your own App's id
+      # app-private-key: ${{ secrets.IRONBEE_APP_PRIVATE_KEY }}  # and its private key
