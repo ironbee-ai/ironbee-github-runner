@@ -31,7 +31,11 @@ def ref_of(args: list) -> str:
 
 
 def save(path: str, state: dict) -> None:
-    with open(path, "w") as f: json.dump(state, f)
+    """Written beside the state and renamed over it: a test reading it while a call runs (the signal tests poll it
+    during a pull) finds the old state or the new one, never a file emptied by the open."""
+    part = f"{path}.{os.getpid()}"
+    with open(part, "w") as f: json.dump(state, f)
+    os.replace(part, path)
 
 
 def main(argv: list) -> int:
