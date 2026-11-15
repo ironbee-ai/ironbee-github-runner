@@ -73,9 +73,11 @@ inputs() {
   tag=v$image_tag
   if [ -n "$prerelease" ]; then
     floating=v0
+    also=""
   else
     [ "$major" != 0 ] || fail 2 "a release of major version 0: v0 is the tag of the newest release or pre-release"
     floating=v$major
+    also=" and v0"
   fi
   lines=$(printf '%s\n' "$WORKFLOWS" | grep -c .)
   [ "$lines" = 1 ] || fail 2 "the release lists $lines workflows, and its steps carry the digest of one image"
@@ -202,7 +204,6 @@ step_plan() {
   else
     say "$tag is new${newest:+; the newest release is v$newest}"
   fi
-  if [ -n "$prerelease" ]; then also=""; else also=" and v0"; fi
   say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag $floating$also"
 }
 

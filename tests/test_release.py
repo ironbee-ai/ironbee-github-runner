@@ -445,6 +445,7 @@ class Publish(Release):
         self.assertEqual(self.git("rev-parse", f"{head}~1", cwd=self.origin), base)
         self.assertEqual(self.git("log", "-1", "--format=%s|%an <%ae>|%cn <%ce>", head, cwd=self.origin), f"chore(release): v1.0.0-rc.2|{BOT}|{BOT}")
         self.assertEqual((self.ref("refs/tags/v1.0.0-rc.2"), self.ref("refs/tags/v0")), (head, head))
+        self.assertIn("tagged v1.0.0-rc.2; v0 moved to it", ran.out)                                     # the step ran to its end
         for tag, message in (("v1.0.0-rc.2", "1.0.0-rc.2: a pre-release for IronBee's own tests"), ("v0", "v0: the newest release or pre-release (v1.0.0-rc.2)")):
             self.assertEqual(self.git("cat-file", "-t", f"refs/tags/{tag}", cwd=self.origin), "tag")     # annotated
             self.assertEqual(self.git("tag", "-l", "--format=%(taggername) %(taggeremail)|%(contents:subject)", tag, cwd=self.origin), f"{BOT}|{message}")
@@ -460,6 +461,7 @@ class Publish(Release):
         self.assertEqual((self.ref("refs/tags/v1.0.0"), self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, head, head))
         self.assertEqual(self.git("tag", "-l", "--format=%(contents:subject)", "v1", cwd=self.origin), "v1: the newest release of major version 1 (v1.0.0)")
         self.assertEqual(self.git("tag", "-l", "--format=%(contents:subject)", "v0", cwd=self.origin), "v0: the newest release or pre-release (v1.0.0)")
+        self.assertIn("tagged v1.0.0; v1 and v0 moved to it", ran.out)
 
     def test_a_release_whose_v0_moved_meanwhile_pushes_nothing(self):
         self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
