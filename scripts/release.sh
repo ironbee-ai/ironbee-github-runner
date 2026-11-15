@@ -73,11 +73,9 @@ inputs() {
   tag=v$image_tag
   if [ -n "$prerelease" ]; then
     floating=v0
-    also=""
   else
     [ "$major" != 0 ] || fail 2 "a release of major version 0: v0 is the tag of the newest release or pre-release"
     floating=v$major
-    also=" and v0"
   fi
   lines=$(printf '%s\n' "$WORKFLOWS" | grep -c .)
   [ "$lines" = 1 ] || fail 2 "the release lists $lines workflows, and its steps carry the digest of one image"
@@ -108,6 +106,43 @@ newer() {
     fi
   done
   return 1
+}
+
+# later A B: whether image tag A (MAJOR.MINOR.PATCH, or with -rc.<N>) comes after B: by version, then a release after
+# its pre-releases, then the higher pre-release.
+later() {
+  local one=${1%%-*} two=${2%%-*} rc1 rc2
+  if [ "$one" != "$two" ]; then
+    newer "$one" "$two"
+    return
+  fi
+  rc1=${1#"$one"}
+  rc2=${2#"$two"}
+  if [ -z "$rc1" ] || [ -z "$rc2" ]; then
+    [ -z "$rc1" ] && [ -n "$rc2" ]
+    return
+  fi
+  [ "${rc1#-rc.}" -gt "${rc2#-rc.}" ]
+}
+
+# moves_of: the floating tags this run moves, in words (moves), and the image tag v0 stays at (keep) when what it names
+# now is later than this one: v0 never goes back, so a release of an older line moves its own major version's tag alone.
+moves_of() {
+  local t named=""
+  if git rev-parse -q --verify "refs/tags/v0" > /dev/null; then
+    while IFS= read -r t; do
+      [[ ${t#v} =~ $IMAGE_TAG ]] || continue
+      if [ -z "$named" ] || later "${t#v}" "$named"; then
+        named=${t#v}
+      fi
+    done < <(git tag --points-at "refs/tags/v0^{commit}" 'v*')
+  fi
+  keep=""
+  if [ -n "$named" ] && later "$named" "$image_tag"; then
+    keep=$named
+  fi
+  if [ -n "$prerelease" ]; then moves=""; else moves=$floating; fi
+  if [ -z "$keep" ]; then moves=${moves:+$moves and }v0; fi
 }
 
 # The newest release's version among the tags, or nothing.
@@ -204,7 +239,8 @@ step_plan() {
   else
     say "$tag is new${newest:+; the newest release is v$newest}"
   fi
-  say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag $floating$also"
+  moves_of
+  say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag ${moves:-none}${keep:+; v0 stays at v$keep, which is later}"
 }
 
 # The tag is read here alone. A registry's tag can be moved, so from here on the release names the image by the
@@ -321,7 +357,7 @@ step_token() {
 }
 
 step_publish() {
-  local workflow was latest moved=""
+  local workflow was latest moved="" refs leases
   tools git
   if pushed; then
     notice "$tag is already pushed with this image and version: nothing is moved"
@@ -329,6 +365,7 @@ step_publish() {
   fi
   [ -z "$(git status --porcelain --untracked-files=no)" ] || fail 2 "the working tree holds changes: a release commits its stamp alone"
   step_stamp
+  moves_of
   was=$(git rev-parse -q --verify "refs/tags/$floating" || true)
   latest=$(git rev-parse -q --verify "refs/tags/v0" || true)
   if [ -n "$was" ]; then
@@ -339,23 +376,25 @@ step_publish() {
   done 3<<< "$WORKFLOWS"
   # The same image and version as main already names (a pre-release promoted as it is) stamp nothing: an empty commit.
   bot commit --quiet --allow-empty -m "chore(release): $tag"
+  refs=("HEAD:refs/heads/main" "refs/tags/$tag")
+  leases=()
   if [ -n "$prerelease" ]; then
     bot tag -a "$tag" -m "$version-$prerelease: a pre-release for IronBee's own tests"
-    bot tag -f -a "$floating" -m "$floating: the newest release or pre-release ($tag)" > /dev/null
   else
     bot tag -a "$tag" -m "$version: a release"
     bot tag -f -a "$floating" -m "$floating: the newest release of major version $major ($tag)" > /dev/null
+    refs+=("refs/tags/$floating")
+    leases+=("--force-with-lease=refs/tags/$floating:$was")
+  fi
+  if [ -z "$keep" ]; then
     bot tag -f -a v0 -m "v0: the newest release or pre-release ($tag)" > /dev/null
+    refs+=("refs/tags/v0")
+    leases+=("--force-with-lease=refs/tags/v0:$latest")
   fi
   # All or nothing. main only moves forward; the tag is new; each floating tag moves only from where it was read.
-  if [ -n "$prerelease" ]; then
-    git push --quiet --atomic --force-with-lease="refs/tags/$floating:$was" origin \
-      HEAD:refs/heads/main "refs/tags/$tag" "refs/tags/$floating" || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
-  else
-    git push --quiet --atomic --force-with-lease="refs/tags/$floating:$was" --force-with-lease="refs/tags/v0:$latest" origin \
-      HEAD:refs/heads/main "refs/tags/$tag" "refs/tags/$floating" "refs/tags/v0" || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
-  fi
-  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag; $floating$also moved to it$moved"
+  git push --quiet --atomic ${leases[@]+"${leases[@]}"} origin "${refs[@]}" \
+    || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
+  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag${moves:+; $moves moved to it$moved}${keep:+; v0 stays at v$keep, which is later}"
 }
 
 # The GitHub release's text: the image by digest, its platforms, and how to verify it.

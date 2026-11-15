@@ -463,6 +463,36 @@ class Publish(Release):
         self.assertEqual(self.git("tag", "-l", "--format=%(contents:subject)", "v0", cwd=self.origin), "v0: the newest release or pre-release (v1.0.0)")
         self.assertIn("tagged v1.0.0; v1 and v0 moved to it", ran.out)
 
+    def v0_at(self, name: str) -> None:
+        self.git("tag", "-f", "-a", "v0", "-m", "v0", f"refs/tags/{name}^{{commit}}"); self.git("push", "--quiet", "--force", "origin", "refs/tags/v0")
+
+    def test_v0_never_goes_back_to_an_older_line(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0"); self.v0_at("v2.0.0-rc.1")
+        ahead = self.ref("refs/tags/v0")
+        ran = self.release("plan", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertIn("floating tag v1; v0 stays at v2.0.0-rc.1, which is later", ran.out)
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        head = self.ref("main")
+        self.assertEqual((self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, ahead))
+        self.assertIn("tagged v1.0.0; v1 moved to it", ran.out); self.assertIn("v0 stays at v2.0.0-rc.1, which is later", ran.out)
+
+    def test_a_pre_release_of_an_older_line_moves_no_floating_tag(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0"); self.v0_at("v2.0.0-rc.1")
+        ahead = self.ref("refs/tags/v0")
+        ran = self.release("publish", tag="1.0.0-rc.3")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual(self.ref("refs/tags/v0"), ahead)
+        self.assertIn("tagged v1.0.0-rc.3; v0 stays at v2.0.0-rc.1, which is later", ran.out)
+
+    def test_v0_moves_from_a_pre_release_to_its_release_and_on(self):
+        self.tag("v1.0.0-rc.2"); self.v0_at("v1.0.0-rc.2")
+        self.assertEqual(self.release("publish", tag="1.0.0").code, 0)                                   # a release follows its pre-release
+        self.assertEqual(self.ref("refs/tags/v0"), self.ref("refs/tags/v1.0.0"))
+        self.assertEqual(self.release("publish", tag="1.0.1-rc.1", digest=OTHER).code, 0)                # and a later pre-release follows it
+        self.assertEqual(self.ref("refs/tags/v0"), self.ref("refs/tags/v1.0.1-rc.1"))
+
     def test_a_release_whose_v0_moved_meanwhile_pushes_nothing(self):
         self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
         self.git("tag", "-f", "-a", "v0", "-m", "elsewhere", "main~1", cwd=self.origin)
