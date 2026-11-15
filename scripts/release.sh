@@ -144,6 +144,12 @@ moves_of() {
   if [ -z "$keep" ]; then moves=${moves:+$moves and }v0; fi
 }
 
+# stays: what becomes of v0 when a later version keeps it, in words: it stays, or, where there is none yet, none is made.
+stays() {
+  [ -n "$keep" ] || return 0
+  if git rev-parse -q --verify "refs/tags/v0" > /dev/null; then printf '; v0 stays, v%s being later' "$keep"; else printf '; no v0 is made, v%s being later' "$keep"; fi
+}
+
 # The newest release's version among the tags, or nothing.
 newest_release() {
   local t newest=""
@@ -222,8 +228,11 @@ step_plan() {
   local workflow image newest moves keep
   tools git
   [ "${GITHUB_REF:-}" = refs/heads/main ] || fail 2 "a release runs from main, not ${GITHUB_REF:-an unknown ref}"
-  # In the workflow the checkout has just fetched every tag, with no credential kept; by hand, a clone may be stale.
-  [ -n "${GITHUB_ACTIONS:-}" ] || fresh_tags
+  # In the workflow the checkout has just fetched every tag and keeps no credential: a fetch it is refused leaves those.
+  if ! git fetch --quiet --prune origin "+refs/tags/v*:refs/tags/v*" 2> /dev/null; then
+    [ -n "${GITHUB_ACTIONS:-}" ] || fail 1 "origin's tags could not be read"
+    notice "origin's tags could not be fetched again: the plan reads them as the checkout fetched them"
+  fi
   if [ -n "$prerelease" ] && git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
     fail 1 "v$version is released: it takes no more pre-releases"
   fi
@@ -241,7 +250,7 @@ step_plan() {
   else
     say "$tag is new${newest:+; the newest release is v$newest}"
     moves_of
-    say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag ${moves:-none}${keep:+; v0 stays, v$keep being later}"
+    say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag ${moves:-none}$(stays)"
   fi
 }
 
@@ -410,14 +419,14 @@ step_publish() {
   if git rev-parse -q --verify "refs/tags/v0" > /dev/null; then
     refs+=("refs/tags/v0")
     leases+=("--force-with-lease=refs/tags/v0:$latest")
+    now=$(git ls-remote --tags origin refs/tags/v0) || fail 1 "origin's tags could not be read: nothing was pushed; run the release again"
+    [ "$(awk '$2 == "refs/tags/v0" { print $1 }' <<< "$now")" = "$latest" ] \
+      || fail 1 "nothing was pushed: v0 moved on origin since it was read; run the release again"
   fi
-  now=$(git ls-remote --tags origin refs/tags/v0) || fail 1 "origin's tags could not be read, and nothing was pushed; run the release again"
-  [ "$(awk '$2 == "refs/tags/v0" { print $1 }' <<< "$now")" = "$latest" ] \
-    || fail 1 "the push was refused and nothing was pushed: v0 moved meanwhile; run the release again"
   # All or nothing. main only moves forward; the tag is new; each floating tag moves only from where it was read.
   git push --quiet --atomic ${leases[@]+"${leases[@]}"} origin "${refs[@]}" \
     || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
-  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag${moves:+; $moves moved to it ($froms)}${keep:+; v0 stays, v$keep being later}"
+  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag${moves:+; $moves moved to it ($froms)}$(stays)"
 }
 
 # The GitHub release's text: the image by digest, its platforms, and how to verify it.
