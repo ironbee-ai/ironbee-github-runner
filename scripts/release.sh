@@ -136,8 +136,8 @@ moves_of() {
         named=${t#v}
       fi
     done < <(git tag --points-at "refs/tags/v0^{commit}" 'v*')
-    # A v0 on no version's commit was moved by hand: which is newer is not known, so it is left to whoever moved it.
-    [ -n "$named" ] || fail 2 "v0 names $(git rev-parse --short "refs/tags/v0^{commit}"), which no version's tag names: move v0 to the newest version's commit, then run the release again"
+    # A v0 on no version's commit was moved by hand: nothing it names is later, so it moves, and it is said.
+    [ -n "$named" ] || notice "v0 names $(git rev-parse --short "refs/tags/v0^{commit}"), which no version's tag names: it moves to $tag"
   fi
   keep=""
   if [ -n "$named" ] && later "$named" "$image_tag"; then
@@ -359,14 +359,18 @@ step_token() {
   fi
 }
 
-# fresh_tags: the tags as origin has them, before any is read: fetched by force, so a stale floating tag reads as
-# origin's, and this release's tag dropped when origin lacks it (a refused run left it), so a run again in the same
-# clone publishes. No other local tag is touched.
+# fresh_tags: the release's own tags (each version's, v<image tag>, and the floating v<N>) made origin's exactly before
+# any is read: fetched by force, then each one origin's list lacks dropped, so neither a stale tag nor one a refused run
+# left decides anything. Every other local tag stays.
 fresh_tags() {
+  local remote t
   git fetch --quiet --force --tags origin || fail 1 "origin's tags could not be read"
-  if git rev-parse -q --verify "refs/tags/$tag" > /dev/null && [ -z "$(git ls-remote --tags origin | awk -v t="refs/tags/$tag" '$2 == t')" ]; then
-    git tag -d "$tag" > /dev/null
-  fi
+  remote=$(git ls-remote --tags origin) || fail 1 "origin's tags could not be read"
+  while IFS= read -r t; do
+    if { [[ $t == v* && ${t#v} =~ $IMAGE_TAG ]] || [[ $t =~ ^v(0|[1-9][0-9]*)$ ]]; } && ! awk -v r="refs/tags/$t" '$2 == r { found = 1 } END { exit !found }' <<< "$remote"; then
+      git tag -d "$t" > /dev/null
+    fi
+  done < <(git tag -l)
 }
 
 # from_of REF: where a floating tag moves from, in words: its commit now, or new.
@@ -408,9 +412,10 @@ step_publish() {
   if [ -z "$keep" ]; then
     froms="${froms:+$froms, }v0 from $(from_of "$latest")"
     bot tag -f -a v0 -m "v0: the newest release or pre-release ($tag)" > /dev/null
-    refs+=("refs/tags/v0")
-    leases+=("--force-with-lease=refs/tags/v0:$latest")
   fi
+  # v0 rides the push either way, moved or where it was, so that a v0 moved meanwhile refuses the push whatever was decided.
+  refs+=("refs/tags/v0")
+  leases+=("--force-with-lease=refs/tags/v0:$latest")
   # All or nothing. main only moves forward; the tag is new; each floating tag moves only from where it was read.
   git push --quiet --atomic ${leases[@]+"${leases[@]}"} origin "${refs[@]}" \
     || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
