@@ -226,15 +226,10 @@ platform_digest() {
 }
 
 step_plan() {
-  local workflow image newest moves keep fetched
+  local workflow image newest moves keep
   tools git
   [ "${GITHUB_REF:-}" = refs/heads/main ] || fail 2 "a release runs from main, not ${GITHUB_REF:-an unknown ref}"
-  # In the workflow the checkout has just fetched every tag and keeps no credential: a fetch it is refused leaves those,
-  # with git's own words in the notice.
-  if ! fetched=$(git fetch --quiet --prune origin "+refs/tags/v*:refs/tags/v*" 2>&1); then
-    [ -n "${GITHUB_ACTIONS:-}" ] || fail 1 "origin's tags could not be read: $fetched"
-    notice "origin's tags could not be fetched again ($fetched): the plan reads them as the checkout fetched them"
-  fi
+  fresh_tags
   if [ -n "$prerelease" ] && git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
     fail 1 "v$version is released: it takes no more pre-releases"
   fi
@@ -371,9 +366,11 @@ step_token() {
 
 # fresh_tags: the release's own tags, every v* (the versions' and the floating ones), made origin's in one read before any
 # is read: fetched by force with an explicit refspec, so that a local v* tag origin lacks is pruned, and neither a stale
-# tag nor one a refused run left decides anything. A tag outside v* stays.
+# tag nor one a refused run left decides anything. A tag outside v* stays. The repository is public, so its tags are
+# read with no credential, in the workflow as by hand; any failure stops the run with git's own words.
 fresh_tags() {
-  git fetch --quiet --prune origin "+refs/tags/v*:refs/tags/v*" || fail 1 "origin's tags could not be read"
+  local fetched
+  fetched=$(git fetch --quiet --prune origin "+refs/tags/v*:refs/tags/v*" 2>&1) || fail 1 "origin's tags could not be read: $fetched"
 }
 
 # from_of REF: where a floating tag moves from, in words: its commit now, or new.
