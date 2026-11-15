@@ -125,23 +125,20 @@ later() {
   [ "${rc1#-rc.}" -gt "${rc2#-rc.}" ]
 }
 
-# moves_of: the floating tags this run moves, in words (moves), and the image tag v0 stays at (keep) when what it names
-# now is later than this one: v0 never goes back, so a release of an older line moves its own major version's tag alone.
+# moves_of: the floating tags this run moves, in words (moves), and the newest version of all (keep) when it is later
+# than this one: v0 follows the newest version, so a release of an older line moves its own major version's tag alone,
+# and the newest puts v0 back where it belongs wherever it was moved by hand.
 moves_of() {
-  local t named=""
-  if git rev-parse -q --verify "refs/tags/v0" > /dev/null; then
-    while IFS= read -r t; do
-      [[ ${t#v} =~ $IMAGE_TAG ]] || continue
-      if [ -z "$named" ] || later "${t#v}" "$named"; then
-        named=${t#v}
-      fi
-    done < <(git tag --points-at "refs/tags/v0^{commit}" 'v*')
-    # A v0 on no version's commit was moved by hand: nothing it names is later, so it moves, and it is said.
-    [ -n "$named" ] || notice "v0 names $(git rev-parse --short "refs/tags/v0^{commit}"), which no version's tag names: it moves to $tag"
-  fi
+  local t newest=""
+  while IFS= read -r t; do
+    [[ ${t#v} =~ $IMAGE_TAG ]] || continue
+    if [ -z "$newest" ] || later "${t#v}" "$newest"; then
+      newest=${t#v}
+    fi
+  done < <(git tag -l 'v*')
   keep=""
-  if [ -n "$named" ] && later "$named" "$image_tag"; then
-    keep=$named
+  if [ -n "$newest" ] && later "$newest" "$image_tag"; then
+    keep=$newest
   fi
   if [ -n "$prerelease" ]; then moves=""; else moves=$floating; fi
   if [ -z "$keep" ]; then moves=${moves:+$moves and }v0; fi
@@ -222,9 +219,10 @@ platform_digest() {
 }
 
 step_plan() {
-  local workflow image newest
+  local workflow image newest moves keep
   tools git
   [ "${GITHUB_REF:-}" = refs/heads/main ] || fail 2 "a release runs from main, not ${GITHUB_REF:-an unknown ref}"
+  fresh_tags
   if [ -n "$prerelease" ] && git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
     fail 1 "v$version is released: it takes no more pre-releases"
   fi
@@ -242,7 +240,7 @@ step_plan() {
   else
     say "$tag is new${newest:+; the newest release is v$newest}"
     moves_of
-    say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag ${moves:-none}${keep:+; v0 stays at v$keep, which is later}"
+    say "tag $tag, version $version${prerelease:+ ($prerelease)}, floating tag ${moves:-none}${keep:+; v0 stays, v$keep being later}"
   fi
 }
 
@@ -359,18 +357,11 @@ step_token() {
   fi
 }
 
-# fresh_tags: the release's own tags (each version's, v<image tag>, and the floating v<N>) made origin's exactly before
-# any is read: fetched by force, then each one origin's list lacks dropped, so neither a stale tag nor one a refused run
-# left decides anything. Every other local tag stays.
+# fresh_tags: the release's own tags, every v* (the versions' and the floating ones), made origin's in one read before any
+# is read: fetched by force with an explicit refspec, so that a local v* tag origin lacks is pruned, and neither a stale
+# tag nor one a refused run left decides anything. A tag outside v* stays.
 fresh_tags() {
-  local remote t
-  git fetch --quiet --force --tags origin || fail 1 "origin's tags could not be read"
-  remote=$(git ls-remote --tags origin) || fail 1 "origin's tags could not be read"
-  while IFS= read -r t; do
-    if { [[ $t == v* && ${t#v} =~ $IMAGE_TAG ]] || [[ $t =~ ^v(0|[1-9][0-9]*)$ ]]; } && ! awk -v r="refs/tags/$t" '$2 == r { found = 1 } END { exit !found }' <<< "$remote"; then
-      git tag -d "$t" > /dev/null
-    fi
-  done < <(git tag -l)
+  git fetch --quiet --prune origin "+refs/tags/v*:refs/tags/v*" || fail 1 "origin's tags could not be read"
 }
 
 # from_of REF: where a floating tag moves from, in words: its commit now, or new.
@@ -413,13 +404,16 @@ step_publish() {
     froms="${froms:+$froms, }v0 from $(from_of "$latest")"
     bot tag -f -a v0 -m "v0: the newest release or pre-release ($tag)" > /dev/null
   fi
-  # v0 rides the push either way, moved or where it was, so that a v0 moved meanwhile refuses the push whatever was decided.
+  # v0 rides the push either way under its lease; one that stays is an unchanged ref, which carries no update for the
+  # remote to check, so it is read again right before the push.
   refs+=("refs/tags/v0")
   leases+=("--force-with-lease=refs/tags/v0:$latest")
+  [ "$(git ls-remote --tags origin refs/tags/v0 | awk '$2 == "refs/tags/v0" { print $1 }')" = "$latest" ] \
+    || fail 1 "the push was refused and nothing was pushed: v0 moved meanwhile; run the release again"
   # All or nothing. main only moves forward; the tag is new; each floating tag moves only from where it was read.
   git push --quiet --atomic ${leases[@]+"${leases[@]}"} origin "${refs[@]}" \
     || fail 1 "the push was refused and nothing was pushed: main or a tag moved meanwhile; run the release again"
-  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag${moves:+; $moves moved to it ($froms)}${keep:+; v0 stays at v$keep, which is later}"
+  say "pushed $(git rev-parse --short HEAD) to main, tagged $tag${moves:+; $moves moved to it ($froms)}${keep:+; v0 stays, v$keep being later}"
 }
 
 # The GitHub release's text: the image by digest, its platforms, and how to verify it.
