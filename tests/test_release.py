@@ -130,18 +130,18 @@ class Inputs(Release):
         names = {"1.2.3-rc.4": "tag v1.2.3-rc.4, version 1.2.3 (rc.4), floating tag v0",
                  "0.3.0-rc.1": "tag v0.3.0-rc.1, version 0.3.0 (rc.1), floating tag v0",
                  "1.2.3-rc.12": "tag v1.2.3-rc.12, version 1.2.3 (rc.12), floating tag v0",
-                 "1.2.3": "tag v1.2.3, version 1.2.3, floating tag v1",
-                 "12.0.10": "tag v12.0.10, version 12.0.10, floating tag v12"}
+                 "1.2.3": "tag v1.2.3, version 1.2.3, floating tag v1 and v0",
+                 "12.0.10": "tag v12.0.10, version 12.0.10, floating tag v12 and v0"}
         for tag, line in names.items():
             with self.subTest(tag=tag):
                 ran = self.release("plan", tag=tag)
                 self.assertEqual(ran.code, 0, ran.out)
-                self.assertIn(line, ran.out)
+                self.assertTrue(any(out_line.endswith(line) for out_line in ran.out.splitlines()), ran.out)   # the whole line: nothing after the tag
 
     def test_major_version_0_is_never_released(self):
         ran = self.release("plan", tag="0.9.0")
         self.assertEqual(ran.code, 2)
-        self.assertIn("v0 is the pre-releases' tag", ran.out)
+        self.assertIn("v0 is the tag of the newest release or pre-release", ran.out)
 
     def test_the_steps_and_their_arguments(self):
         for args in ((), ("nope",), ("plan", "x"), ("image",), ("image", "amd64", "x")):
@@ -195,7 +195,8 @@ class Plan(Release):
         self.assertEqual(self.release("plan", tag="1.9.5-rc.1").code, 0)   # a pre-release is not held to it
 
     def test_pre_releases_and_floating_tags_are_no_release(self):
-        self.tag("v2.0.0-rc.1"); self.tag("v0"); self.tag("v3")
+        self.tag("v2.0.0-rc.1"); self.tag("v3")
+        self.git("tag", "-a", "v0", "-m", "v0", "v2.0.0-rc.1^{commit}"); self.git("push", "--quiet", "origin", "v0")   # where a release leaves v0
         self.assertEqual(self.release("plan", tag="1.0.0").code, 0)
 
     def test_a_released_version_takes_no_more_pre_releases(self):
@@ -445,21 +446,94 @@ class Publish(Release):
         self.assertEqual(self.git("rev-parse", f"{head}~1", cwd=self.origin), base)
         self.assertEqual(self.git("log", "-1", "--format=%s|%an <%ae>|%cn <%ce>", head, cwd=self.origin), f"chore(release): v1.0.0-rc.2|{BOT}|{BOT}")
         self.assertEqual((self.ref("refs/tags/v1.0.0-rc.2"), self.ref("refs/tags/v0")), (head, head))
-        for tag, message in (("v1.0.0-rc.2", "1.0.0-rc.2: a pre-release for IronBee's own tests"), ("v0", "v0: the newest pre-release (v1.0.0-rc.2)")):
+        self.assertIn("tagged v1.0.0-rc.2; v0 moved to it", ran.out)                                     # the step ran to its end
+        for tag, message in (("v1.0.0-rc.2", "1.0.0-rc.2: a pre-release for IronBee's own tests"), ("v0", "v0: the newest release or pre-release (v1.0.0-rc.2)")):
             self.assertEqual(self.git("cat-file", "-t", f"refs/tags/{tag}", cwd=self.origin), "tag")     # annotated
             self.assertEqual(self.git("tag", "-l", "--format=%(taggername) %(taggeremail)|%(contents:subject)", tag, cwd=self.origin), f"{BOT}|{message}")
         self.assertIn(f"IRONBEE_IMAGE: {IMAGE}@{DIGEST}", self.git("show", f"v1.0.0-rc.2:{WORKFLOW}", cwd=self.origin))
         self.assertEqual(self.git("diff", "--name-only", base, head, cwd=self.origin), WORKFLOW)
         self.assertEqual(self.git("status", "--porcelain"), "")
 
-    def test_a_release_moves_its_major_versions_tag(self):
+    def test_a_release_moves_its_major_versions_tag_and_v0(self):
         self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
-        v0 = self.ref("refs/tags/v0")
         ran = self.release("publish", tag="1.0.0")
         self.assertEqual(ran.code, 0, ran.out)
         head = self.ref("main")
-        self.assertEqual((self.ref("refs/tags/v1.0.0"), self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, head, v0))
+        self.assertEqual((self.ref("refs/tags/v1.0.0"), self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, head, head))
         self.assertEqual(self.git("tag", "-l", "--format=%(contents:subject)", "v1", cwd=self.origin), "v1: the newest release of major version 1 (v1.0.0)")
+        self.assertEqual(self.git("tag", "-l", "--format=%(contents:subject)", "v0", cwd=self.origin), "v0: the newest release or pre-release (v1.0.0)")
+        self.assertIn("tagged v1.0.0; v1 and v0 moved to it", ran.out)
+
+    def v0_at(self, name: str) -> None:
+        self.git("tag", "-f", "-a", "v0", "-m", "v0", f"refs/tags/{name}^{{commit}}"); self.git("push", "--quiet", "--force", "origin", "refs/tags/v0")
+
+    def test_v0_never_goes_back_to_an_older_line(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0"); self.v0_at("v2.0.0-rc.1")
+        ahead = self.ref("refs/tags/v0")
+        ran = self.release("plan", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertIn("floating tag v1; v0 stays, v2.0.0-rc.1 being later", ran.out)
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        head = self.ref("main")
+        self.assertEqual((self.ref("refs/tags/v1"), self.ref("refs/tags/v0")), (head, ahead))
+        self.assertIn("tagged v1.0.0; v1 moved to it", ran.out); self.assertIn("v0 stays, v2.0.0-rc.1 being later", ran.out)
+
+    def test_a_pre_release_of_an_older_line_moves_no_floating_tag(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0"); self.v0_at("v2.0.0-rc.1")
+        ahead = self.ref("refs/tags/v0")
+        ran = self.release("publish", tag="1.0.0-rc.3")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual(self.ref("refs/tags/v0"), ahead)
+        self.assertIn("tagged v1.0.0-rc.3; v0 stays, v2.0.0-rc.1 being later", ran.out)
+
+    def test_v0_moves_from_a_pre_release_to_its_release_and_on(self):
+        self.tag("v1.0.0-rc.2"); self.v0_at("v1.0.0-rc.2")
+        self.assertEqual(self.release("publish", tag="1.0.0").code, 0)                                   # a release follows its pre-release
+        self.assertEqual(self.ref("refs/tags/v0"), self.ref("refs/tags/v1.0.0"))
+        self.assertEqual(self.release("publish", tag="1.0.1-rc.1", digest=OTHER).code, 0)                # and a later pre-release follows it
+        self.assertEqual(self.ref("refs/tags/v0"), self.ref("refs/tags/v1.0.1-rc.1"))
+
+    def test_a_release_whose_v0_moved_during_the_run_pushes_nothing(self):
+        self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
+        main = self.ref("main")
+        hook = self.work / ".git" / "hooks" / "pre-push"                                                     # moves origin's v0 after the tags were read
+        hook.write_text(f"#!/bin/sh\ngit -C '{self.origin}' tag -f -a v0 -m elsewhere v1.0.0-rc.1 > /dev/null\n"); hook.chmod(0o755)
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn("nothing was pushed", ran.out)
+        self.assertEqual((self.ref("main"), self.git("tag", "-l", "v1.0.0", cwd=self.origin)), (main, ""))
+
+    def test_each_floating_tag_says_where_it_moved_from(self):
+        self.tag("v1.0.0-rc.1"); self.v0_at("v1.0.0-rc.1")
+        v0 = self.git("rev-parse", "--short", "refs/tags/v0^{commit}", cwd=self.origin)
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertIn(f"tagged v1.0.0; v1 and v0 moved to it (v1 from new, v0 from {v0})", ran.out)
+
+    def test_a_stale_local_floating_tag_is_read_again(self):
+        self.assertEqual(self.release("publish").code, 0)                                                # origin's v0 at rc.2
+        self.git("tag", "-f", "-a", "v0", "-m", "stale", "main~1")                                      # this clone's, behind
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual(self.ref("refs/tags/v0"), self.ref("refs/tags/v1.0.0"))
+
+    def test_a_tag_a_refused_run_left_is_dropped_and_the_run_again_publishes(self):
+        self.git("tag", "-a", "v1.0.0-rc.2", "-m", "left by a refused run")                              # never pushed
+        self.git("tag", "mine")                                                                         # someone's own, kept
+        ran = self.release("publish")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertNotIn("already pushed", ran.out)
+        self.assertEqual(self.ref("refs/tags/v1.0.0-rc.2"), self.ref("main"))
+        self.assertEqual(self.git("tag", "-l", "mine"), "mine")
+
+
+
+    def test_a_plan_of_a_pushed_tag_claims_no_floating_tag(self):
+        self.assertEqual(self.release("publish").code, 0)
+        ran = self.release("plan")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertIn("tag v1.0.0-rc.2, version 1.0.0 (rc.2)", ran.out); self.assertNotIn("floating tag", ran.out)
 
     def test_a_pre_release_promoted_as_it_is_is_an_empty_commit(self):
         self.tag("v1.0.0-rc.2")
@@ -498,14 +572,51 @@ class Publish(Release):
         self.assertIn("nothing was pushed", ran.out)
         self.assertEqual(self.refs(), before)
 
-    def test_the_floating_tag_moved_meanwhile_and_nothing_is_pushed(self):
+    def test_the_newest_release_puts_a_hand_moved_v0_back(self):
         self.tag("v1.0.0-rc.1"); self.git("tag", "-a", "v0", "-m", "v0"); self.git("push", "--quiet", "origin", "v0")
-        self.git("tag", "-f", "-a", "v0", "-m", "elsewhere", "main~1", cwd=self.origin)
-        before = self.refs()
+        self.git("tag", "-f", "-a", "v0", "-m", "by hand", "main~1", cwd=self.origin)
         ran = self.release("publish")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual(self.ref("refs/tags/v0"), self.ref("refs/tags/v1.0.0-rc.2"))
+
+    def test_an_older_lines_release_with_no_v0_anywhere(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0")                                                          # tagged before v0 existed
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual((self.ref("refs/tags/v0"), self.ref("refs/tags/v1")), ("", self.ref("refs/tags/v1.0.0")))
+        self.assertIn("no v0 is made, v2.0.0-rc.1 being later", ran.out)
+
+    def test_an_older_lines_release_leaves_a_hand_moved_v0_alone(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0"); self.git("tag", "-a", "v0", "-m", "by hand", "main~1"); self.git("push", "--quiet", "origin", "v0")
+        by_hand = self.ref("refs/tags/v0")
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual((self.ref("refs/tags/v0"), self.ref("refs/tags/v1")), (by_hand, self.ref("refs/tags/v1.0.0")))
+        self.assertIn("v0 stays, v2.0.0-rc.1 being later", ran.out)
+
+    def test_a_floating_tag_origin_lacks_is_dropped_here(self):
+        self.tag("v1.0.0-rc.1")
+        self.git("tag", "-a", "v1", "-m", "left by a refused run")                                       # origin has no v1
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertIn("v1 and v0 moved to it (v1 from new", ran.out)
+        self.assertEqual(self.ref("refs/tags/v1"), self.ref("refs/tags/v1.0.0"))
+
+    def test_a_version_tag_origin_lacks_counts_for_nothing(self):
+        self.git("tag", "-a", "v2.0.0", "-m", "deleted from origin")                                     # here alone
+        ran = self.release("publish", tag="1.0.0")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertEqual(self.git("tag", "-l", "v2.0.0"), "")
+
+    def test_a_kept_v0_moved_during_the_run_and_nothing_is_pushed(self):
+        self.tag("v2.0.0-rc.1", version="2.0.0"); self.v0_at("v2.0.0-rc.1")
+        main = self.ref("main")
+        hook = self.work / ".git" / "hooks" / "post-commit"                                              # after the tags were read, before the push
+        hook.write_text(f"#!/bin/sh\ngit -C '{self.origin}' tag -f -a v0 -m elsewhere main~1 > /dev/null\n"); hook.chmod(0o755)
+        ran = self.release("publish", tag="1.0.0")
         self.assertEqual(ran.code, 1, ran.out)
         self.assertIn("nothing was pushed", ran.out)
-        self.assertEqual(self.refs(), before)
+        self.assertEqual((self.ref("main"), self.git("tag", "-l", "v1.0.0", cwd=self.origin)), (main, ""))
 
     def test_a_working_tree_with_changes(self):
         (self.work / WORKFLOW).write_text((self.work / WORKFLOW).read_text() + "# more\n")
