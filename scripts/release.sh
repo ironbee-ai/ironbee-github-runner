@@ -223,17 +223,21 @@ stamp_file() {
 
 # pushed: whether the release's tag exists, its commit's workflows naming this image, this version and this tag: a run
 # again after its push. A tag that names anything else is refused, since a tag is never moved. A release before
-# code-review-no-queue.yml tagged the first workflow alone, with no tag line.
+# code-review-no-queue.yml tagged the first workflow alone, with no tag line; a tag whose first workflow has the tag line
+# holds every listed workflow.
 pushed() {
-  local workflow image n=0
+  local workflow image n=0 old=false
   git rev-parse -q --verify "refs/tags/$tag" > /dev/null || return 1
   while read -r workflow image <&3; do
     n=$((n + 1))
     if ! git show "refs/tags/$tag:$workflow" > "$IRONBEE_TMP/tagged" 2> /dev/null; then
-      [ "$n" != 1 ] || fail 1 "$tag exists without $workflow: a tag is never moved"
+      [ "$old" = true ] || fail 1 "$tag exists without $workflow: a tag is never moved"
       continue
     fi
     stamp_file "$IRONBEE_TMP/tagged" "$tag:$workflow" "$image" "$IRONBEE_TMP/tagged.stamped" tagged
+    if [ "$n" = 1 ] && [ -z "$was_tag" ]; then
+      old=true
+    fi
     if [ "$was_digest" != "$digest" ] || [ "$was_version" != "$version" ] || { [ -n "$was_tag" ] && [ "$was_tag" != "$tag" ]; }; then
       fail 1 "$tag exists and names $image@$was_digest, version $was_version${was_tag:+, tag $was_tag}: a tag is never moved"
     fi

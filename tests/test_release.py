@@ -254,6 +254,22 @@ class Plan(Release):
         self.assertEqual(ran.code, 1, ran.out)
         self.assertIn("a tag is never moved", ran.out)
 
+    def test_a_tag_whose_first_workflow_names_its_tag_and_lacks_the_workflow_without_a_queue(self):
+        """Its first workflow is of a release that tags both, so the missing one is no release's doing."""
+        main = self.ref("main")
+        path = self.work / WORKFLOW
+        path.write_text(stamped(path.read_text(), DIGEST, "1.0.0", "v1.0.0-rc.2"))
+        self.git("rm", "--quiet", NO_QUEUE)
+        self.git("commit", "--quiet", "-am", "chore(release): v1.0.0-rc.2"); self.git("tag", "-a", "v1.0.0-rc.2", "-m", "by hand")
+        self.git("push", "--quiet", "origin", "refs/tags/v1.0.0-rc.2")
+        self.git("checkout", "--quiet", main, "--", "."); self.git("commit", "--quiet", "-m", "main moves on"); self.git("push", "--quiet", "origin", "HEAD:main")
+        ran = self.release("plan")
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn(f"v1.0.0-rc.2 exists without {NO_QUEUE}: a tag is never moved", ran.out)
+        ran = self.release("publish")
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn(f"v1.0.0-rc.2 exists without {NO_QUEUE}: a tag is never moved", ran.out)
+
 
 class Stamp(Release):
     def test_the_digest_the_version_and_the_tag_and_nothing_else(self):
