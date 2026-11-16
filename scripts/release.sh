@@ -237,6 +237,8 @@ pushed() {
     stamp_file "$IRONBEE_TMP/tagged" "$tag:$workflow" "$image" "$IRONBEE_TMP/tagged.stamped" tagged
     if [ "$n" = 1 ] && [ -z "$was_tag" ]; then
       old=true
+    elif [ "$old" = false ] && [ -z "$was_tag" ]; then
+      fail 1 "$tag exists and its $workflow names no tag: a tag is never moved"
     fi
     if [ "$was_digest" != "$digest" ] || [ "$was_version" != "$version" ] || { [ -n "$was_tag" ] && [ "$was_tag" != "$tag" ]; }; then
       fail 1 "$tag exists and names $image@$was_digest, version $was_version${was_tag:+, tag $was_tag}: a tag is never moved"
