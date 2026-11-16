@@ -395,10 +395,11 @@ On GitHub's own runners or on your self-hosted ones.
   (`runs-on: my-runner`), or a JSON list of labels in a string (`runs-on: '["self-hosted","linux"]'`). A YAML list is
   refused by the workflow's validation. Such a runner connects outward only.
 - A self-hosted runner needs Linux with Docker, on `amd64` or `arm64`, and `bash`, `jq`, `gh`, `curl` and `docker`.
-  The job uses those, the image, `actions/checkout` and, under your own App, GitHub's own action that mints an App
-  token. The review step runs the image with `docker run` as the runner's own user, and mounts the event file and the
-  step's outputs file into it by their paths on the runner: a runner that is itself a container must reach a Docker
-  daemon that sees those paths at the same place. A proxy set on the runner's machine (`HTTPS_PROXY`, `NO_PROXY` and
+  The job uses those, the image, `actions/checkout` and GitHub's own action that mints an App token: a runner fetches
+  every action a job names before its first step, the App token's one too when no App is given. The review step runs
+  the image with `docker run` as the runner's own user, and mounts the event file and the step's outputs file into it
+  by their paths on the runner: a runner that is itself a container must reach a Docker daemon that sees those paths at
+  the same place. A proxy set on the runner's machine (`HTTPS_PROXY`, `NO_PROXY` and
   their lowercase forms) is handed on to the runner.
 - **Rootless Docker** works: the container then runs as its own root, which is the runner's user on the machine.
   **Docker with `userns-remap`** is not supported: the container's users could not write the step's outputs file, so
@@ -485,9 +486,11 @@ organizations hold. On github.com a copy is what an enterprise keeps when it all
 - **The runners are yours.** A server has no hosted runners: name yours in `runs-on`. Linux with Docker, `amd64` or
   `arm64`, with `bash`, `jq`, `gh`, `curl` and `docker`, and GitHub Actions Runner 2.327.1 or later: `actions/checkout`
   v6 runs on Node 24. They reach your server, Docker Hub, IronBee's API and your model.
-- **The actions, at the commits this workflow pins:** `actions/checkout` v6.0.2 and, under your own App,
-  `actions/create-github-app-token` v3.3.0. A site admin makes them available on the server: with `actions-sync`, or
-  through GitHub Connect once the server's own older copy of the action is removed, since the server's copy wins.
+- **The actions, at the commits this workflow pins:** `actions/checkout` v6.0.2 and
+  `actions/create-github-app-token` v3.3.0, both needed with or without your own App: a runner fetches every action the
+  job names before its first step, and a job naming one the server lacks fails there. A site admin makes them
+  available on the server: with `actions-sync`, or through GitHub Connect once the server's own older copy of the action
+  is removed, since the server's copy wins.
 - **A private authority.** When one signed the server's certificate, give its certificates in
   `github-ca-certificate`, in PEM: the reviewer's container adds them to its own roots for its calls to the server and
   its clone. The runner's machine must trust the server already: Actions itself, the workflow's other steps and `gh`
@@ -545,7 +548,7 @@ Nothing changes in the workflow. What your enterprise's policies ask of it:
   Under Enterprise Managed Users your organizations hold private and internal repositories only, so the copy is one of
   those, and needs `runner-token`.
 - **Only the enterprise's own actions and workflows allowed.** That policy also blocks the actions GitHub authors,
-  which the workflow uses: `actions/checkout` and, under your own App, `actions/create-github-app-token`. Choose
+  which the workflow names: `actions/checkout` and `actions/create-github-app-token`, both fetched for every run. Choose
   **Allow enterprise, and select non-enterprise, actions and reusable workflows** with **Allow actions created by
   GitHub**, and keep the copy. A copy of GitHub's actions does not serve: the workflow names them under `actions/`.
 - **A repository a managed user owns** (its owner's login ends in `_<short code>`) is not served: IronBee refuses its
