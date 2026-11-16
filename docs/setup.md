@@ -16,7 +16,8 @@ From IronBee:
 
 From your side:
 
-- repositories on github.com;
+- repositories on github.com, on a GHE.com tenant or on GitHub Enterprise Server
+  ([On GitHub Enterprise](#on-github-enterprise));
 - a model, and its key where it needs one ([Models](models.md));
 - GitHub's hosted runners, or runners of your own ([Where the job runs](#where-the-job-runs)).
 
@@ -178,7 +179,9 @@ check it writes. With the file above the job reads `IronBee / Code Review / Job 
 shows under the workflow, as `IronBee / Code Review Result (pull_request)` (GitHub picks its place), and under your
 own GitHub App under the App's name. Its steps:
 
-1. **The workflow's scripts**, fetched from the workflow's own repository at the commit your file names.
+1. **The workflow's scripts**, fetched from the workflow's own repository at the commit your file names; on GitHub
+   Enterprise Server, from the copy `runner-repository` names, at the release's tag
+   ([A copy of this repository](#a-copy-of-this-repository)).
 2. **Register**, for the last two triggers alone: the repository's project at IronBee (step 3).
 3. **Decide**, for a pull request's events: what the event asks for, without the image. Nothing for the reviewer ends
    the run here.
@@ -193,7 +196,8 @@ One run per pull request at a time, for the events that may run the reviewer: a 
 reply on a review thread, and a person's conversation comment that mentions someone (`@`). A run that has started is
 never cancelled, and the runs that wait are kept and run in turn, each reading what the one before it wrote. Every
 other event never waits: a bot's comment (the reviewer's own included), a review thread's first comment, a comment
-that mentions nobody, a merge queue's group, a push and a manual start.
+that mentions nobody, a merge queue's group, a push and a manual start. A host whose Actions keep only one waiting
+run calls the workflow without a queue instead ([A host without a queue](#a-host-without-a-queue)).
 
 ## Every input and secret
 
@@ -219,6 +223,8 @@ one is optional ([Versions](versions.md)).
 | `skip-labels` | the labels that keep a pull request from being reviewed, for a repository left without a project; one a line |
 | `skip-title-keywords` | the words in a title that keep a pull request from being reviewed, for a repository left without a project; one a line |
 | `app-slug` | your own GitHub App's slug ([Identity](identity.md)) |
+| `runner-repository` | your copy of this repository, `owner/name`, on a host whose jobs do not name their workflow's repository: GitHub Enterprise Server. Elsewhere the job names it, and this input is not read ([A copy of this repository](#a-copy-of-this-repository)) |
+| `github-ca-certificate` | the certificates, in PEM, of a private authority that signed your GitHub Enterprise Server's certificate ([On GitHub Enterprise Server](#on-github-enterprise-server)) |
 
 | Secret | For |
 |---|---|
@@ -230,6 +236,7 @@ one is optional ([Versions](versions.md)).
 | `jev-key` | Jev with your own key ([Jev](jev.md)) |
 | `app-id` | your own GitHub App's id |
 | `app-private-key` | your own GitHub App's private key |
+| `runner-token` | a read-only token for your copy of this repository, which the job's token cannot read: needed on GHE.com and GitHub Enterprise Server, and on github.com for a copy that is not public ([A copy of this repository](#a-copy-of-this-repository)) |
 
 The four per-repository inputs carry what the IronBee console holds for a repository's project. They are used only
 for a repository that IronBee left without a project ([step 3](#a-repository-left-without-a-project)); for every
@@ -240,8 +247,9 @@ through an environment variable or GitHub's event file, never pasted into a scri
 the API key and the registry token are set, never given either. The registry token reaches only the review step,
 which signs in to Docker Hub with it through standard input, for the pull alone. Your App's key reaches the review
 step and, beside it, only the two steps that mint a token for a `neutral` check. The model's key, its headers and its
-certificates reach the runner's container as environment variables, by name, never on a command line, and the rules
-repository's input, ref and token reach the runner alone.
+certificates, and your server's certificates, reach the runner's container as environment variables, by name, never on
+a command line, and the rules repository's input, ref and token reach the runner alone. `runner-token` reaches only the
+step that fetches the workflow's scripts.
 
 ## 3. Register the repository
 
@@ -400,11 +408,153 @@ address in `ironbee-api-url`), and nothing else; with your Jev key, also Jev's e
 pulled from Docker Hub by the review step, by its digest. Where the job may connect beyond that is your network's
 policy.
 
-An organization that does not allow workflows from outside its own repositories must copy this whole repository at
-a release, the workflow file and `scripts/`, into a repository the calling job's token can read: the calling
-repository itself, or a public one. The job fetches `scripts/` from the workflow's own repository with that token,
-and a private copy elsewhere cannot be read by the caller's `GITHUB_TOKEN`. Call the copy in place of
-`ironbee-ai/ironbee-github-runner`.
+An organization that does not allow workflows from outside its own repositories keeps a copy of this repository and
+calls the copy in place of `ironbee-ai/ironbee-github-runner`
+([A copy of this repository](#a-copy-of-this-repository)).
+
+## On GitHub Enterprise
+
+The runner serves repositories on github.com under GitHub Enterprise Cloud, on a GHE.com tenant (`<name>.ghe.com`,
+GitHub Enterprise Cloud with data residency) and on GitHub Enterprise Server 3.19 or later with GitHub Actions on, from
+release `v1.0.0`; the pre-releases before it serve github.com alone. IronBee never calls your host for these
+repositories: there is no host to register with IronBee, no address of IronBee's to allow and no certificate to give
+IronBee. The job reads your host, calls your model and calls IronBee's API as it does on github.com, so a server that is
+not reachable from the internet is served when its runners reach IronBee's API, Docker Hub and your model.
+
+| | Enterprise Cloud on github.com | GHE.com | GitHub Enterprise Server |
+|---|---|---|---|
+| The workflow file you call | `code-review.yml` | `code-review.yml`, or `code-review-no-queue.yml` where your tenant refuses `queue` ([below](#on-ghecom)) | `code-review-no-queue.yml` ([A host without a queue](#a-host-without-a-queue)) |
+| Where it is | this repository, or your copy where a policy asks for one | your copy on the tenant | your copy on the server |
+| `runner-repository` | not read | not read | your copy, `owner/name` |
+| `runner-token` | for a copy that is not public | always | always |
+| `runs-on` | any runner | GitHub's Linux runners or yours | your own runners, with Docker |
+| `github-ca-certificate` | — | — | when a private authority signed the server's certificate |
+| `knowledge-token`, under the job token | for a private rules repository | for any rules repository | for a private one, and for any on a server in private mode |
+
+IronBee files the repository as `<host>:owner/name` (`acme.ghe.com:acme/shop`), apart from a github.com repository of
+the same name, and the repository gets its own project. IronBee refuses a host it cannot name as one: a server named by
+an IP address or by a single label. Its registration fails, and its pull requests get a `neutral` check that holds no
+merge.
+
+### A copy of this repository
+
+On GHE.com and GitHub Enterprise Server the workflow is called from a copy of this repository on your host (a reusable
+workflow on github.com cannot be called from a server); on a tenant the copy is private or internal, the only kinds its
+organizations hold. On github.com a copy is what an enterprise keeps when it allows no workflows from outside.
+
+- **Make it** from a release, with this repository's tags: the workflow file names its release's tag, and on a server
+  the scripts are fetched at that tag. On a server, `actions-sync` copies the repository from github.com; elsewhere,
+  mirror it (`git clone --mirror https://github.com/ironbee-ai/ironbee-github-runner.git`, then `git push --mirror` to
+  your copy). To move to a later release, copy again, then move the tag in `uses:`.
+- **Call it** in place of `ironbee-ai/ironbee-github-runner`, at a release: `uses:
+  <owner>/<name>/.github/workflows/<file>@v1.0.0`. On a server, name it again in `runner-repository`: a server's jobs
+  do not name their workflow's repository, and the first step fails, naming the input, when neither names it.
+- **Who may call it.** A public copy serves every repository. An internal copy serves the enterprise's private and
+  internal repositories once its Actions access setting allows them (**Settings → Actions → General → Access**:
+  accessible from repositories in the enterprise). A private copy's workflow can be called from private repositories
+  only. A public repository on a server needs a public copy.
+- **`runner-token`**, a read-only token that can read the copy: the job's token reads the calling repository alone. Give
+  it as an Actions secret, and as a Dependabot secret of the same name, since GitHub gives Dependabot's runs none of
+  the repository's secrets. Without it the first step cannot fetch the scripts, nothing else runs, and a required
+  `Code Review Result` holds the merge. On a server it is needed for a public copy too.
+
+```yaml
+    uses: acme/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
+    with:
+      model-provider: anthropic
+    secrets:
+      # ironbee-api-key, registry-token, model-key, as above
+      runner-token: ${{ secrets.IRONBEE_RUNNER_TOKEN }}
+```
+
+### On GHE.com
+
+- Your tenant takes `actions/checkout` and `actions/create-github-app-token` from github.com, and GitHub's Linux runners
+  run the job.
+- `code-review.yml` names `concurrency.queue`. Where your tenant refuses the workflow for that key, call
+  `code-review-no-queue.yml` as a server does ([A host without a queue](#a-host-without-a-queue)).
+- **The rules repository** is read with `knowledge-token` under the job token: your tenant refuses the anonymous read
+  the runner makes without one. Under your own App, install the App there, as on github.com.
+
+### On GitHub Enterprise Server
+
+- **The runners are yours.** A server has no hosted runners: name yours in `runs-on`. Linux with Docker, `amd64` or
+  `arm64`, with `bash`, `jq`, `gh`, `curl` and `docker`, and GitHub Actions Runner 2.327.1 or later: `actions/checkout`
+  v6 runs on Node 24. They reach your server, Docker Hub, IronBee's API and your model.
+- **The actions, at the commits this workflow pins:** `actions/checkout` v6.0.2 and, under your own App,
+  `actions/create-github-app-token` v3.3.0. A site admin makes them available on the server: with `actions-sync`, or
+  through GitHub Connect once the server's own older copy of the action is removed, since the server's copy wins.
+- **A private authority.** When one signed the server's certificate, give its certificates in
+  `github-ca-certificate`, in PEM: the reviewer's container adds them to its own roots for its calls to the server and
+  its clone. The runner's machine must trust the server already: Actions itself, the workflow's other steps and `gh`
+  use the machine's trust.
+- **Your own App** is registered on the server, and its slug is the server's ([Identity](identity.md)).
+
+```yaml
+jobs:
+  code-review:
+    name: Code Review
+    uses: acme/ironbee-github-runner/.github/workflows/code-review-no-queue.yml@v1.0.0
+    with:
+      model-provider: anthropic
+      runner-repository: acme/ironbee-github-runner
+      runs-on: '["self-hosted","linux"]'
+      # github-ca-certificate: ${{ vars.GHES_CA_CERTIFICATE }}
+    secrets:
+      ironbee-api-key: ${{ secrets.IRONBEE_API_KEY }}
+      registry-token: ${{ secrets.IRONBEE_REGISTRY_TOKEN }}
+      model-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      runner-token: ${{ secrets.IRONBEE_RUNNER_TOKEN }}
+```
+
+The whole file, with its permissions, is in [examples/ironbee-review-enterprise-server.yml](../examples/ironbee-review-enterprise-server.yml).
+
+### A host without a queue
+
+`code-review-no-queue.yml` is the same workflow, of the same release, for a host whose Actions keep only one waiting
+run of a concurrency group: every GitHub Enterprise Server today. There a newer run replaces the one that waits:
+
+- a review that waited, replaced by a review, loses nothing: the run that replaces it reads the newest head;
+- a command or a question that waited is lost: its author asks again;
+- a review that waited, replaced by a reply or a command, is started again by the run that replaced it, at its end:
+  that run's last step re-runs the newest review of the pull request's head that was cancelled, once the head holds no
+  check and no review of the reviewer's. A review started again takes the waiting place like any newer run. A review
+  someone cancelled by hand while it waited is started again the same way.
+
+So that fewer runs replace a waiting one, a conversation comment waits only when it names the reviewer (`@ironbee-ai`,
+or `@<app-slug>` under your own App); one that names someone else runs on its own and ends at the decide step.
+
+Two things the calling file must hold:
+
+- **`actions: write`** in its `permissions`, for the re-run. Without it that last step fails, naming the permission.
+- **The review's job alone.** A re-run starts every job of a run again, so a run whose file also builds, tests or
+  deploys is not started again; the step's log says so, and the head waits for a push, a re-run or
+  `@ironbee-ai review`.
+
+### Enterprise Cloud on github.com
+
+Nothing changes in the workflow. What your enterprise's policies ask of it:
+
+- **An IP allow list.** GitHub accepts the job's token only from runners whose address is on the list: run the job on
+  your own runners or on GitHub's larger runners with static addresses, and put their addresses on the list.
+- **Workflows from outside not allowed.** Keep a copy ([A copy of this repository](#a-copy-of-this-repository)).
+  Under Enterprise Managed Users your organizations hold private and internal repositories only, so the copy is one of
+  those, and needs `runner-token`.
+- **Only the enterprise's own actions and workflows allowed.** That policy also blocks the actions GitHub authors,
+  which the workflow uses: `actions/checkout` and, under your own App, `actions/create-github-app-token`. Choose
+  **Allow enterprise, and select non-enterprise, actions and reusable workflows** with **Allow actions created by
+  GitHub**, and keep the copy. A copy of GitHub's actions does not serve: the workflow names them under `actions/`.
+- **A repository a managed user owns** (its owner's login ends in `_<short code>`) is not served: IronBee refuses its
+  path.
+
+### With IronBee's CLI on these hosts
+
+`ironbee runner setup`, `add` and `check` take the host from the clone's remote, or from `--host github` with your
+`GH_HOST`. Off github.com they also need `--component <owner>/<name>@<tag>`, your copy and its release, and on a server
+`--runs-on`. They ask for `runner-token`, which they store as `IRONBEE_RUNNER_TOKEN`, an Actions secret and a
+Dependabot secret, and write the file your host needs: the workflow file of the table above, `runner-repository`,
+and with the workflow without a queue, `actions: write`. `check` also reads your copy's visibility and Actions access,
+and says when a file that calls the workflow without a queue lacks `actions: write` or holds other jobs.
 
 ## Next
 

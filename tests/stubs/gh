@@ -2,12 +2,19 @@
 """A stand-in for `gh api` in the scripts' tests: a small GitHub of one repository, held in the JSON file
 $STUB_GH_STATE and changed by the calls that write, each call recorded in $STUB_GH_CALLS (one JSON a line). No network.
 
-The state: repo ("owner/name"); tokens ({token: the App it acts as, `github-actions` for the job's token}); checks (check
+The state: host (the stub's GitHub host, github.com when not set: a call gh addresses elsewhere gets no answer); repo
+("owner/name"); tokens ({token: the App it acts as, `github-actions` for the job's token}); checks (check
 runs, each with its head_sha and app slug); reviews ({number: [review]}); comments ({id: review comment}); pulls
-({number: pull request}); permissions ({login: permission}); releases ({tag: GitHub release}); fail ([{method, path, status, times, made}]: the next calls whose
+({number: pull request}); permissions ({login: permission}); releases ({tag: GitHub release}); runs (workflow runs, each
+with its id, workflow_id, event, head_sha, status and conclusion); jobs ({run id: [job]}); reruns (the runs re-run, in
+order); fail ([{method, path, status, times, made}]: the next calls whose
 path starts so answer that status, 0 for no answer at all; with `made` the call is done first, and only its answer lost); on_create ({before, after: [check runs], rewrite: {..}}: what
 other writers do around the next check run created). Its answers and errors are written as gh writes them: the body on
-stdout, and on an error `gh: <message> (HTTP <status>)` on stderr with exit 1."""
+stdout, and on an error `gh: <message> (HTTP <status>)` on stderr with exit 1.
+
+As gh does, it addresses GH_HOST (github.com when unset) and takes its token by that host: GH_TOKEN on github.com and
+on *.ghe.com, GH_ENTERPRISE_TOKEN on any other host. A call records the host it named (`host`, null when GH_HOST is
+unset) and the token gh took (`token`)."""
 import json
 import os
 import sys
@@ -26,9 +33,9 @@ def record(call: dict) -> None:
     with open(os.environ["STUB_GH_CALLS"], "a") as f: f.write(json.dumps(call) + "\n")
 
 
-def error(status: int, message: str) -> int:
+def error(status: int, message: str, host: str = "github.com") -> int:
     if status == 0:
-        sys.stderr.write("error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n"); return 1
+        sys.stderr.write(f"error connecting to {host}\ncheck your internet connection or https://githubstatus.com\n"); return 1
     sys.stdout.write(json.dumps({"message": message, "status": str(status)}))
     sys.stderr.write(f"gh: {message} (HTTP {status})\n"); return 1
 
@@ -78,6 +85,21 @@ def route(state: dict, method: str, path: str, body, app: str):
     if method == "GET" and len(rest) == 3 and rest[0] == "collaborators" and rest[2] == "permission":
         p = state["permissions"].get(urllib.parse.unquote(rest[1]))
         return (200, {"permission": p, "user": {"login": rest[1]}}) if p else (404, "Not Found")
+    runs = state.setdefault("runs", [])
+    if method == "GET" and len(rest) == 3 and rest[:2] == ["actions", "runs"]:
+        r = next((r for r in runs if str(r["id"]) == rest[2]), None); return (200, r) if r else (404, "Not Found")
+    if method == "GET" and len(rest) == 4 and rest[:2] == ["actions", "workflows"] and rest[3] == "runs":
+        rows = [r for r in runs if str(r["workflow_id"]) == rest[2] and all(r.get(k) == query[k] for k in ("event", "head_sha") if k in query)
+                and (not query.get("status") or query["status"] in (r.get("status"), r.get("conclusion")))]
+        return 200, {"total_count": len(rows), "workflow_runs": sorted(rows, key=lambda r: -r["id"])}
+    if method == "GET" and len(rest) == 4 and rest[:2] == ["actions", "runs"] and rest[3] == "jobs":
+        if not any(str(r["id"]) == rest[2] for r in runs): return 404, "Not Found"
+        jobs = state.setdefault("jobs", {}).get(rest[2], []); return 200, {"total_count": len(jobs), "jobs": jobs}
+    if method == "POST" and len(rest) == 4 and rest[:2] == ["actions", "runs"] and rest[3] == "rerun":
+        r = next((r for r in runs if str(r["id"]) == rest[2]), None)
+        if r is None: return 404, "Not Found"
+        if r.get("status") != "completed": return 403, "This workflow is already running"
+        r.update(status="queued", conclusion=None); state.setdefault("reruns", []).append(r["id"]); return 201, {}
     return 404, "Not Found"
 
 
@@ -95,18 +117,21 @@ def main(argv: list) -> int:
     body = None
     if source is not None:
         with (sys.stdin if source == "-" else open(source)) as f: body = json.load(f)
-    token = os.environ.get("GH_TOKEN", ""); state = load()
-    record({"method": method, "path": path, "token": token, "body": body, "paginate": paginate})
+    named = os.environ.get("GH_HOST") or None; host = (named or "github.com").lower()
+    cloud = host == "github.com" or host.endswith(".ghe.com")
+    token = os.environ.get("GH_TOKEN" if cloud else "GH_ENTERPRISE_TOKEN", ""); state = load()
+    record({"method": method, "path": path, "host": named, "token": token, "body": body, "paginate": paginate})
+    if host != state.get("host", "github.com"): return error(0, "", host)
     for f in state.get("fail", []):
         if f["method"] == method and path.startswith(f["path"]) and f.get("times", 1) > 0:
             f["times"] = f.get("times", 1) - 1
             if f.get("made") and state["tokens"].get(token) is not None:                  # done, and its answer lost
                 route(state, method, path, body, state["tokens"][token])
-            save(state); return error(f["status"], "Server Error")
+            save(state); return error(f["status"], "Server Error", host)
     app = state["tokens"].get(token)
-    if app is None: return error(401, "Bad credentials")
+    if app is None: return error(401, "Bad credentials", host)
     status, out = route(state, method, path, body, app); save(state)
-    if status >= 400: return error(status, out)
+    if status >= 400: return error(status, out, host)
     sys.stdout.write(json.dumps(out)); return 0
 
 

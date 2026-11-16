@@ -220,3 +220,17 @@ repository that is never registered gets its project from its first run's start.
 A registration that leaves the repository without a project (`project_limit`, `project_archived`, `name_taken`) is not
 a failure: the repository is reviewed with the account's settings and the workflow's own inputs
 ([Setup](setup.md#a-repository-left-without-a-project)).
+
+## On GitHub Enterprise
+
+| What you see | What to do |
+|---|---|
+| The first step fails: `runner-repository is not given: on a host whose jobs do not name their workflow's repository, the calling file names this workflow's copy there` | name your copy, `owner/name`, in `runner-repository` ([A copy of this repository](setup.md#a-copy-of-this-repository)) |
+| "Get the workflow's scripts" fails: the repository is not found, or the tag is not | give `runner-token`, a token that can read the copy, as an Actions secret and a Dependabot secret; keep the copy's tags, and call it at a release |
+| GitHub says the workflow is invalid, for `queue` in its `concurrency` | call `code-review-no-queue.yml` ([A host without a queue](setup.md#a-host-without-a-queue)) |
+| A job that waited was cancelled, and its head has no check | the last step of the run that replaced it starts it again; see that step's log below |
+| `GitHub refused to start run <id> again (HTTP 403: <GitHub's words>): the calling workflow file must grant the job actions: write to start a review again` | add `actions: write` to the calling file's `permissions`; where GitHub's words give another reason, such as a run more than a month old, re-run the workflow or ask `@ironbee-ai review` |
+| `restart: run <id>, the review of <head> a newer run replaced while it waited, holds <n> jobs …; nothing started again` | move the review's job into a file of its own; meanwhile re-run that run by hand, or ask `@ironbee-ai review` |
+| The registration fails, or a pull request's `neutral` check says IronBee refused the run, for the repository's path | IronBee names no host by an IP address or a single label: give your server a name with a dot in it ([On GitHub Enterprise](setup.md#on-github-enterprise)) |
+| `warning: the rules repository … could not be read` on GHE.com | give `knowledge-token` ([Settings and rules](settings-and-rules.md#the-rules-repository)) |
+| The review fails at the clone or at GitHub's API with a certificate error, on a server a private authority signed | give that authority's certificates in `github-ca-certificate` |

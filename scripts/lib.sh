@@ -1,4 +1,4 @@
-# Shared by the workflow's scripts, sourced and never run: the log, GitHub's API through gh, who we are, and what of
+# Shared by the workflow's scripts, sourced and never run: the log, the job's host, GitHub's API through gh, who we are, and what of
 # ours a commit holds. Needs bash, jq and gh (curl for the registration, docker for the review). Every value of an event or of an answer is
 # read with jq from a file; none is ever evaluated as code.
 # shellcheck disable=SC2034  # the values set here are read by the scripts that source this file
@@ -12,6 +12,25 @@ export GH_NO_UPDATE_NOTIFIER=1 GH_PROMPT_DISABLED=1
 
 IRONBEE_TMP=$(mktemp -d)
 trap 'rm -rf "$IRONBEE_TMP"' EXIT
+
+# host_of URL: the host a server's address names, lowercase, without its scheme, port or path.
+host_of() {
+  local url=${1:-}
+  url=${url#*://}
+  url=${url%%/*}
+  url=${url##*@}
+  if [[ $url =~ ^(.*):[0-9]+$ ]]; then
+    url=${BASH_REMATCH[1]}
+  fi
+  printf '%s' "$url" | tr '[:upper:]' '[:lower:]'
+}
+
+# The job's GitHub host from GITHUB_SERVER_URL when it is not github.com: a GHE.com tenant or a GitHub Enterprise
+# Server. Empty on github.com, or with no server named.
+IRONBEE_HOST=$(host_of "${GITHUB_SERVER_URL:-}")
+if [ "$IRONBEE_HOST" = github.com ]; then
+  IRONBEE_HOST=""
+fi
 
 say() { printf '%s\n' "$*"; }
 
@@ -76,7 +95,18 @@ repository() {
   case $IRONBEE_REPO in */*) ;; *) fail 2 "GITHUB_REPOSITORY names no repository (owner/name)" ;; esac
 }
 
-# api [--paginate] METHOD PATH OUT [IN]: one call of GitHub's REST API through gh, as GH_TOKEN; the answer's body in
+# gh_on ARGS...: gh as GH_TOKEN, on the job's host. Off github.com GH_HOST names the host and the token goes as
+# GH_ENTERPRISE_TOKEN too, which gh reads on a server's host; both are set for each call, whose GH_TOKEN may be its own.
+gh_on() {
+  local token=${GH_TOKEN:-}
+  if [ -n "$IRONBEE_HOST" ]; then
+    GH_HOST=$IRONBEE_HOST GH_TOKEN=$token GH_ENTERPRISE_TOKEN=$token gh "$@"
+  else
+    gh "$@"
+  fi
+}
+
+# api [--paginate] METHOD PATH OUT [IN]: one call of GitHub's REST API through gh_on, as GH_TOKEN; the answer's body in
 # OUT (with --paginate every page's, one after the other) and its HTTP status printed: 200 for any success, 000 when
 # no answer came. No answer, a 429 or a 5xx is tried three times in all; a POST only on a 429, since one that got no
 # answer or a 5xx may have made what it asked, which its caller looks for. IN is the request's JSON body.
@@ -90,7 +120,7 @@ api() {
   for n in 1 2 3; do
     case $n in 2) sleep 2 ;; 3) sleep 5 ;; esac
     # shellcheck disable=SC2086  # $page is one flag or none
-    if gh api $page --method "$method" ${in:+--input "$in"} "$path" > "$out" 2> "$IRONBEE_TMP/gh.err"; then
+    if gh_on api $page --method "$method" ${in:+--input "$in"} "$path" > "$out" 2> "$IRONBEE_TMP/gh.err"; then
       echo 200
       return 0
     fi

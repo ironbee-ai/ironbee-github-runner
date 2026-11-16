@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from support import APP_LOGIN, APP_SLUG, APP_TOKEN, CHECK, CHECK_PRE, GROUP_HEAD, HEAD, JOB_LOGIN, JOB_TOKEN, ScriptTest, check, marked, seed_check
+from support import (APP_LOGIN, APP_SLUG, APP_TOKEN, CHECK, CHECK_PRE, GROUP_HEAD, HEAD, JOB_LOGIN, JOB_TOKEN, SERVER, TENANT, ScriptTest, check,
+                     github, marked, on_host, seed_check)
 
 LISTED = [f"repos/acme/widgets/commits/{HEAD}/check-runs?check_name=Code%20Review%20Result&filter=all&per_page=100",
           f"repos/acme/widgets/commits/{HEAD}/check-runs?check_name=IronBee%20review&filter=all&per_page=100"]   # one listing a name
@@ -302,6 +303,39 @@ class UnderTheApp(Neutral):
         ran = self.neutral(**self.app(IRONBEE_APP_TOKEN=""))
         self.assertEqual(ran.code, 2)
         self.assertEqual(ran.calls, [])
+
+
+class OnAnEnterpriseHost(Neutral):
+    """gh is told the job's host on every call off github.com, with that call's own token in both of gh's variables:
+    the job's for the reads, the App's for the writes under the App."""
+
+    def test_on_github_com_gh_is_told_no_host(self):
+        ran = self.neutral()
+        self.assertEqual({c["host"] for c in ran.calls}, {None})
+
+    def test_on_a_server_every_call_names_it_and_its_token_is_the_servers_variable(self):
+        for host in (SERVER, TENANT):
+            with self.subTest(host):
+                self.state = github(host)
+                ran = self.neutral(**on_host(host))
+                self.assertEqual(ran.code, 0, ran.out + ran.err)
+                self.assertEqual([c["conclusion"] for c in self.ours(ran)], ["neutral"])
+                self.assertEqual({(c["host"], c["token"]) for c in ran.calls}, {(host, JOB_TOKEN)})
+
+    def test_under_the_app_each_write_carries_the_apps_token_and_each_read_the_jobs(self):
+        for host in (SERVER, TENANT):
+            with self.subTest(host):
+                self.state = github(host)
+                ran = self.neutral(**on_host(host), **{"IRONBEE_APP_SLUG": APP_SLUG, "IRONBEE_APP_TOKEN": APP_TOKEN})
+                self.assertEqual(ran.code, 0, ran.out + ran.err)
+                self.assertEqual({(w["host"], w["token"]) for w in ran.writes()}, {(host, APP_TOKEN)})
+                self.assertEqual({(r["host"], r["token"]) for r in ran.calls if r["method"] == "GET"}, {(host, JOB_TOKEN)})
+
+    def test_a_server_gh_was_not_told_of_is_never_reached(self):
+        self.state = github(SERVER)
+        ran = self.neutral()
+        self.assertEqual(ran.code, 1)
+        self.assertEqual(self.ours(ran), [])
 
 
 if __name__ == "__main__":

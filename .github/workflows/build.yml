@@ -1,6 +1,6 @@
 # The repository's checks, on a pull request into main and on main: the tests (each reusable workflow naming its image
-# by a full digest among them), shellcheck over the scripts and actionlint over the workflows. Every action is pinned by
-# commit, and actionlint by its release's checksum.
+# by a full digest among them), shellcheck over the scripts, the workflow without a queue as its script makes it, and
+# actionlint over the workflows. Every action is pinned by commit, and actionlint by its release's checksum.
 name: Build
 
 on:
@@ -49,6 +49,9 @@ jobs:
         run: |
           shellcheck --version
           shellcheck --shell=bash --external-sources --severity=warning scripts/*.sh
+      # code-review-no-queue.yml is made from code-review.yml by its script, never by hand.
+      - name: The workflow without a queue
+        run: bash scripts/build-no-queue.sh --check
       - name: Install actionlint
         env:
           ACTIONLINT_VERSION: 1.7.12

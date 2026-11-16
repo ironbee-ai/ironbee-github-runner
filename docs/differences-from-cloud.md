@@ -33,7 +33,7 @@
 | Learning from reactions across pull requests | yes | no |
 | Console: pull requests, findings, summaries | yes | a list of each repository's pull requests and their runs, from counts; no finding or summary text |
 | Credits | charged per review | none |
-| Hosts | GitHub, GitLab, Bitbucket | GitHub; no pull requests from forks |
+| Hosts | GitHub, GitLab, Bitbucket | GitHub: github.com, GHE.com and GitHub Enterprise Server, a server not reachable from the internet included ([On GitHub Enterprise](setup.md#on-github-enterprise)); no pull requests from forks |
 
 ## What the two "no" rows mean for you
 

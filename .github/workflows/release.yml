@@ -8,9 +8,10 @@
 #            catches a tag moved to another image; a pre-release's may have been signed for IronBee's own tests
 #   image    each platform's image pulled by digest and run with no network on a runner of its own architecture: its
 #            runner reports the version
-#   publish  the push's token checked first; every listed workflow stamped with the digest and the version, committed
-#            on main, tagged v<image-tag>, the floating tags moved (v0 at every release and pre-release, v<MAJOR> at a release), all
-#            pushed at once; then the GitHub release
+#   publish  the push's token checked first; every listed workflow stamped with the digest, the version and the tag
+#            v<image-tag> (the scripts' ref where a job names no commit), committed on main, tagged v<image-tag>, the
+#            floating tags moved (v0 at every release and pre-release, v<MAJOR> at a release), all pushed at once; then
+#            the GitHub release
 #
 # A run whose tag is already pushed with this image and version moves nothing and only makes the GitHub release when it
 # is missing; a tag that names anything else is refused. Every action is pinned by commit. Needs the secrets

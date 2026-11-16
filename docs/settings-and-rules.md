@@ -74,7 +74,7 @@ A repository of yours whose `.ironbee/` rules, memories and skills apply to ever
 ```yaml
     with:
       model-provider: anthropic
-      knowledge-repository: acme/review-rules   # owner/name, on github.com
+      knowledge-repository: acme/review-rules   # owner/name, on the reviewed repository's host
       knowledge-ref: main                       # a branch or a tag; its default branch when not given
     secrets:
       # ...
@@ -91,7 +91,9 @@ A repository of yours whose `.ironbee/` rules, memories and skills apply to ever
   whatever the reviewed repository's `repositoryKnowledge` says: that switch is the reviewed repository's own files'
   alone.
 - **The credential.** Under the job token: the job token cannot read another private repository, so you give a
-  read-only token for the rules repository as the secret `knowledge-token`; a public rules repository needs no token.
+  read-only token for the rules repository as the secret `knowledge-token`; a public rules repository needs no token
+  on github.com. A GHE.com tenant refuses a read with no token, and so does a GitHub Enterprise Server in private
+  mode: there, give `knowledge-token` for any rules repository.
   Under your own GitHub App: whenever no `knowledge-token` is given, the runner reads the rules repository with the
   App's installation token, so install the App on the rules repository, even a public one, or give a
   `knowledge-token`, which is then used in the App's place.

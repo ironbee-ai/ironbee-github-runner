@@ -1,0 +1,353 @@
+# Generated from code-review.yml by scripts/build-no-queue.sh: do not edit; run `bash scripts/build-no-queue.sh` after
+# changing code-review.yml. The same workflow for a host whose Actions know no concurrency queue (every GitHub
+# Enterprise Server today): a pull request's group keeps one waiting run, which a newer run replaces; the group takes a
+# conversation comment only when it names the reviewer; and the last step starts again a review that a newer run
+# replaced while it waited, so the caller grants the job actions: write.
+#
+# IronBee's code review in a repository's own GitHub Actions: the reusable workflow that a repository's own workflow
+# file calls (examples/ironbee-review.yml). One job, `Job`, so that a pull request's checks show it once
+# (`<caller's workflow> / <caller's job> / Job`) beside the `Code Review Result` check it writes. Its steps, each for the
+# events it serves:
+#
+#   register  a push of that file to the default branch, or a manual start: the repository's project at IronBee
+#   decide    a pull request's event: the action and its pull request, or the end of the run, with no image pulled
+#   neutral   a merge queue's group, or a pull request's run given no secrets: a neutral check, and nothing else
+#   review    the runner's image, pulled by digest and run: the review, the answer or the command
+#   fallback  a pull request's review that did not succeed: a neutral check on the event's head
+#
+# Event fields never reach a script as text to run: the scripts read the event file and their environment. The
+# scripts are this workflow's own, fetched at the commit this file was read from; where the job names no such commit
+# (GitHub Enterprise Server), from the copy `runner-repository` names, at this release's tag. Every action is pinned by
+# commit. A host whose Actions know no concurrency queue calls code-review-no-queue.yml, which
+# scripts/build-no-queue.sh makes from code-review.yml.
+name: IronBee code review
+
+on:
+  workflow_call:
+    inputs:
+      model-provider:
+        description: "The model's provider: anthropic, bedrock or openai"
+        type: string
+        required: true
+      model-url:
+        description: "The model's endpoint, when it is not the provider's public one"
+        type: string
+        required: false
+        default: ""
+      model-name:
+        description: "One model for every task; required for openai with model-url"
+        type: string
+        required: false
+        default: ""
+      model-ca-certificate:
+        description: "The certificates (PEM) of the private authority that signed the endpoint's certificate"
+        type: string
+        required: false
+        default: ""
+      model-prefix:
+        description: "bedrock: the inference profile prefix"
+        type: string
+        required: false
+        default: ""
+      model-max-output:
+        description: "The most output tokens a model turn may ask for"
+        type: string
+        required: false
+        default: ""
+      aws-region:
+        description: "bedrock: the region"
+        type: string
+        required: false
+        default: ""
+      runs-on:
+        description: "Where the jobs run: a runner label, or a JSON list of labels"
+        type: string
+        required: false
+        default: ubuntu-latest
+      knowledge-repository:
+        description: "The rules repository (owner/name)"
+        type: string
+        required: false
+        default: ""
+      knowledge-ref:
+        description: "A branch or a tag of the rules repository; its default branch when empty"
+        type: string
+        required: false
+        default: ""
+      ignore-paths:
+        description: "For a repository left without a project: the paths to ignore, one a line"
+        type: string
+        required: false
+        default: ""
+      target-branches:
+        description: "For a repository left without a project: the target branches reviewed, one a line"
+        type: string
+        required: false
+        default: ""
+      skip-labels:
+        description: "For a repository left without a project: the labels that skip a review, one a line"
+        type: string
+        required: false
+        default: ""
+      skip-title-keywords:
+        description: "For a repository left without a project: the title keywords that skip a review, one a line"
+        type: string
+        required: false
+        default: ""
+      app-slug:
+        description: "The customer's own GitHub App's slug, when the reviewer runs as that App"
+        type: string
+        required: false
+        default: ""
+      ironbee-api-url:
+        description: "IronBee's API address; the public API when empty"
+        type: string
+        required: false
+        default: ""
+      ironbee-run-reports:
+        description: "Whether a run reports what it reviewed to IronBee; false sends only that a run started"
+        type: string
+        required: false
+        default: "true"
+      runner-repository:
+        description: "This workflow's copy (owner/name), on a host whose jobs do not name their workflow's repository (GitHub Enterprise Server)"
+        type: string
+        required: false
+        default: ""
+      github-ca-certificate:
+        description: "The certificates (PEM) of the private authority that signed the GitHub server's certificate"
+        type: string
+        required: false
+        default: ""
+    secrets:
+      # Needed for every review, but not required here: a run GitHub gives no secrets (a Dependabot pull request's) must
+      # still reach the decide step, which checks that both are set and otherwise writes the neutral check.
+      ironbee-api-key:
+        description: "The IronBee account's API key; needed, and the decide step checks that it is set"
+        required: false
+      registry-token:
+        description: "The read-only token that pulls the runner's image; needed, and the decide step checks that it is set"
+        required: false
+      model-key:
+        description: "The model's key; optional with model-url"
+        required: false
+      model-headers:
+        description: "Extra headers for the model's endpoint, one name=value a line"
+        required: false
+      knowledge-token:
+        description: "A read-only token for a private rules repository, under the job's token"
+        required: false
+      jev-key:
+        description: "Jev under the customer's own key"
+        required: false
+      app-id:
+        description: "The customer's own GitHub App's id"
+        required: false
+      app-private-key:
+        description: "The customer's own GitHub App's private key"
+        required: false
+      runner-token:
+        description: "A read-only token for this workflow's copy, which the job's token cannot read; needed off github.com"
+        required: false
+
+
+jobs:
+  review:
+    name: Job
+    # A pull request's events, a manual start, and a push of the caller's file (its trigger names the default branch and
+    # the file's path).
+    if: >-
+      contains(fromJSON('["pull_request", "issue_comment", "pull_request_review_comment", "merge_group", "workflow_dispatch"]'), github.event_name) ||
+      (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    # One run of a pull request at a time, for the events that may run the reviewer: a pull request's event, a person's
+    # reply on a review thread, a person's conversation comment that names the reviewer. A started run is never
+    # cancelled; one run waits, a newer one replaces it, and the restart step starts a review so replaced again. Every
+    # other event (a bot's comment, ours included, a thread's first comment, a comment that names someone else or
+    # nobody, a merge queue's group, a push, a manual start) has a group of its own: it never waits.
+    concurrency:
+      group: >-
+        ${{
+          (github.event_name == 'pull_request' ||
+           (github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id &&
+            github.event.comment.user.type != 'Bot' && github.event.sender.type != 'Bot') ||
+           (github.event_name == 'issue_comment' &&
+            contains(github.event.comment.body,
+                     inputs.app-slug != '' && (startsWith(inputs.app-slug, '@') && inputs.app-slug || format('@{0}', inputs.app-slug)) || '@ironbee-ai') &&
+            github.event.comment.user.type != 'Bot' && github.event.sender.type != 'Bot'))
+          && format('ironbee-review-{0}', github.event.pull_request.number || github.event.issue.number)
+          || format('ironbee-{0}', github.run_id)
+        }}
+      cancel-in-progress: false
+    # The release's image, by the digest the release writes here: the version the register step sends.
+    env:
+      IRONBEE_IMAGE: docker.io/ironbeeai/ironbee-code-review-runner@sha256:b0d70bf52444f89ad3e26a67dfe5533e9898574e3736d8a842b5d4b28128871d
+    steps:
+      # A job that names no workflow repository would otherwise fetch the calling repository's own `scripts`.
+      - name: The workflow's repository
+        id: repository
+        if: job.workflow_repository == '' && inputs.runner-repository == ''
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          echo "::error::runner-repository is not given: on a host whose jobs do not name their workflow's repository, the calling file names this workflow's copy there"
+          exit 2
+      - name: Get the workflow's scripts
+        id: scripts
+        timeout-minutes: 5
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ job.workflow_repository || inputs.runner-repository }}
+          ref: ${{ job.workflow_sha || 'v1.0.0-rc.8' }}         # the release's tag, where the job names no commit
+          token: ${{ secrets.runner-token || github.token }}
+          path: .ironbee-github-runner
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      # A push of the caller's file, or a manual start: the repository's project at IronBee, and nothing else.
+      - name: Register the repository
+        id: register
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        timeout-minutes: 10
+        shell: bash
+        run: bash .ironbee-github-runner/scripts/register.sh
+        env:
+          IRONBEE_API_KEY: ${{ secrets.ironbee-api-key }}
+          IRONBEE_API_URL: ${{ inputs.ironbee-api-url }}        # empty: the public API
+          IRONBEE_RUNNER_VERSION: 1.0.0                         # the release's version: its image's, IRONBEE_IMAGE above
+
+      # A pull request's event: what it asks of the reviewer. Whether each secret is set, never a secret itself.
+      - name: Decide
+        id: decide
+        if: contains(fromJSON('["pull_request", "issue_comment", "pull_request_review_comment", "merge_group"]'), github.event_name)
+        timeout-minutes: 10
+        shell: bash
+        run: bash .ironbee-github-runner/scripts/decide.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IRONBEE_APP_SLUG: ${{ inputs.app-slug }}
+          IRONBEE_HAS_API_KEY: ${{ secrets.ironbee-api-key != '' }}
+          IRONBEE_HAS_REGISTRY_TOKEN: ${{ secrets.registry-token != '' }}
+          IRONBEE_HAS_APP_ID: ${{ secrets.app-id != '' }}
+          IRONBEE_HAS_APP_PRIVATE_KEY: ${{ secrets.app-private-key != '' }}
+      # Under the customer's own App, its key is used here alone, for a token that may write checks and nothing else.
+      - name: The App's token
+        id: app-token
+        if: steps.decide.outputs.write != '' && inputs.app-slug != ''
+        timeout-minutes: 5
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.app-id }}                       # GitHub takes the App's id here as well as its client id
+          private-key: ${{ secrets.app-private-key }}
+          permission-checks: write
+      - name: Write the neutral check
+        id: neutral
+        if: steps.decide.outputs.write != ''
+        timeout-minutes: 10
+        shell: bash
+        run: bash .ironbee-github-runner/scripts/neutral.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IRONBEE_APP_SLUG: ${{ inputs.app-slug }}
+          IRONBEE_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          IRONBEE_REASON: ${{ steps.decide.outputs.write }}
+          IRONBEE_HEAD: ${{ steps.decide.outputs.write-head }}
+          IRONBEE_PULL_REQUEST: ${{ steps.decide.outputs.write-pull-request }}
+
+      # The runner's image, pulled by digest and run. The step's shell execs the script, which execs the docker client
+      # once the image is pulled, so a cancel or this step's timeout signals docker itself, which hands it to the runner;
+      # one that comes during the pull stops it, and nothing runs. A hung run holds the pull request's queue no longer
+      # than the timeout; the fallback follows it as any failed run. Its `concluding` output is the head the runner
+      # began to conclude a review on: no neutral may go there after it.
+      - name: Review
+        id: review
+        if: steps.decide.outputs.action != ''
+        timeout-minutes: 120
+        shell: bash
+        run: exec bash .ironbee-github-runner/scripts/review.sh
+        env:
+          IRONBEE_REGISTRY_TOKEN: ${{ secrets.registry-token }}
+          IRONBEE_MODEL_PROVIDER: ${{ inputs.model-provider }}
+          IRONBEE_MODEL_URL: ${{ inputs.model-url }}
+          IRONBEE_MODEL_KEY: ${{ secrets.model-key }}
+          IRONBEE_MODEL_HEADERS: ${{ secrets.model-headers }}
+          IRONBEE_MODEL_CA_CERTIFICATE: ${{ inputs.model-ca-certificate }}
+          IRONBEE_MODEL_NAME: ${{ inputs.model-name }}
+          IRONBEE_MODEL_PREFIX: ${{ inputs.model-prefix }}
+          IRONBEE_MODEL_MAX_OUTPUT: ${{ inputs.model-max-output }}
+          AWS_REGION: ${{ inputs.aws-region }}
+          IRONBEE_JEV_KEY: ${{ secrets.jev-key }}
+          IRONBEE_API_KEY: ${{ secrets.ironbee-api-key }}
+          IRONBEE_API_URL: ${{ inputs.ironbee-api-url }}
+          IRONBEE_RUN_REPORTS: ${{ inputs.ironbee-run-reports }}
+          IRONBEE_KNOWLEDGE_REPOSITORY: ${{ inputs.knowledge-repository }}
+          IRONBEE_KNOWLEDGE_REF: ${{ inputs.knowledge-ref }}
+          IRONBEE_KNOWLEDGE_TOKEN: ${{ secrets.knowledge-token }}
+          IRONBEE_IGNORE_PATHS: ${{ inputs.ignore-paths }}
+          IRONBEE_TARGET_BRANCHES: ${{ inputs.target-branches }}
+          IRONBEE_SKIP_LABELS: ${{ inputs.skip-labels }}
+          IRONBEE_SKIP_TITLE_KEYWORDS: ${{ inputs.skip-title-keywords }}
+          GITHUB_TOKEN: ${{ github.token }}
+          IRONBEE_APP_ID: ${{ secrets.app-id }}
+          IRONBEE_APP_PRIVATE_KEY: ${{ secrets.app-private-key }}
+          IRONBEE_APP_SLUG: ${{ inputs.app-slug }}
+          IRONBEE_GITHUB_CA_CERTIFICATE: ${{ inputs.github-ca-certificate }}
+          IRONBEE_ACTION: ${{ steps.decide.outputs.action }}
+          IRONBEE_PULL_REQUEST: ${{ steps.decide.outputs.pull-request }}
+          IRONBEE_COMMENT_ID: ${{ steps.decide.outputs.comment-id }}
+      # A runner killed before its container stopped would leave it running: it is stopped here, whatever happened.
+      - name: Stop the review's container
+        id: stop
+        if: always() && steps.decide.outputs.action != ''
+        timeout-minutes: 2
+        shell: bash
+        run: bash .ironbee-github-runner/scripts/review.sh stop
+
+      # A pull request's review that did not succeed: failed, cancelled, timed out, or the image not pulled or started.
+      - name: The App's token for the fallback
+        id: fallback-app-token
+        if: >-
+          always() && github.event_name == 'pull_request' && steps.decide.outcome == 'success' &&
+          steps.decide.outputs.action == 'review' && steps.review.outcome != 'success' && inputs.app-slug != ''
+        timeout-minutes: 5
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.app-id }}                       # GitHub takes the App's id here as well as its client id
+          private-key: ${{ secrets.app-private-key }}
+          permission-checks: write
+      - name: Fallback
+        id: fallback
+        if: >-
+          always() && github.event_name == 'pull_request' && steps.decide.outcome == 'success' &&
+          steps.decide.outputs.action == 'review' && steps.review.outcome != 'success'
+        timeout-minutes: 10
+        shell: bash
+        run: bash .ironbee-github-runner/scripts/neutral.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IRONBEE_APP_SLUG: ${{ inputs.app-slug }}
+          IRONBEE_APP_TOKEN: ${{ steps.fallback-app-token.outputs.token }}
+          IRONBEE_REASON: not_run
+          IRONBEE_HEAD: ${{ steps.decide.outputs.head }}
+          IRONBEE_CONCLUDING: ${{ steps.review.outputs.concluding }}
+          IRONBEE_PULL_REQUEST: ${{ steps.decide.outputs.pull-request }}
+
+      # A run of the pull request's group that handed on no review may have replaced a waiting review, which then ran
+      # no step: that review is started again, whatever the steps before this one did.
+      - name: Start a replaced review again
+        id: restart
+        if: >-
+          always() && steps.scripts.outcome == 'success' && steps.decide.outputs.action != 'review' &&
+          (github.event_name == 'pull_request' ||
+           (github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id &&
+            github.event.comment.user.type != 'Bot' && github.event.sender.type != 'Bot') ||
+           (github.event_name == 'issue_comment' &&
+            contains(github.event.comment.body,
+                     inputs.app-slug != '' && (startsWith(inputs.app-slug, '@') && inputs.app-slug || format('@{0}', inputs.app-slug)) || '@ironbee-ai') &&
+            github.event.comment.user.type != 'Bot' && github.event.sender.type != 'Bot'))
+        timeout-minutes: 10
+        shell: bash
+        run: bash .ironbee-github-runner/scripts/restart.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IRONBEE_APP_SLUG: ${{ inputs.app-slug }}
