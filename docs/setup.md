@@ -461,7 +461,9 @@ organizations hold. On github.com a copy is what an enterprise keeps when it all
 - **`runner-token`**, a read-only token that can read the copy: the job's token reads the calling repository alone. Give
   it as an Actions secret, and as a Dependabot secret of the same name, since GitHub gives Dependabot's runs none of
   the repository's secrets. Without it the first step cannot fetch the scripts, nothing else runs, and a required
-  `Code Review Result` holds the merge. On a server it is needed for a public copy too.
+  `Code Review Result` holds the merge. On a server it is needed for a public copy too. A classic token reads a private
+  or internal copy with the `repo` scope; where the organization uses SAML single sign-on, authorize the token for it
+  as well (**Configure SSO** beside the token), or GitHub answers the scripts' fetch with 403.
 
 ```yaml
     uses: acme/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
