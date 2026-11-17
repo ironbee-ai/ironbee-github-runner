@@ -1,4 +1,5 @@
-"""What the scripts' tests share. A script runs with bash as a job runs it, its environment given whole, with the stubs
+"""What the scripts' tests share. A script runs with bash as a job runs it, its environment given whole (so on github.com
+unless a test names a GITHUB_SERVER_URL), with the stubs
 first on PATH: `gh` (tests/stubs/gh, a small GitHub of acme/widgets), `sleep` (records the pause, waits none), and for
 the release `docker` (a registry and a daemon) and `cosign`. IronBee's API is a stub on the loopback interface. The
 events are recorded ones (tests/fixtures/events). No network."""
@@ -29,6 +30,8 @@ JOB_LOGIN = "github-actions[bot]"
 APP_LOGIN = f"{APP_SLUG}[bot]"
 HEAD = "2" * 40                                             # the recorded pull request's head
 GROUP_HEAD = "9" * 40                                       # the recorded merge group's commit
+SERVER = "ghes.acme.com"                                    # a GitHub Enterprise Server's host
+TENANT = "acme.ghe.com"                                     # a GHE.com tenant's host
 
 
 def event(name: str) -> dict:
@@ -40,12 +43,18 @@ def marked(text: str, mark: str = "f1") -> str:
     return f"{text}\n\n<!-- ironbee {mark} -->"
 
 
-def github() -> dict:
-    """The stub GitHub's state: acme/widgets with pull request 7, the recorded one."""
+def github(host: str = "github.com") -> dict:
+    """The stub GitHub's state: acme/widgets on `host` with pull request 7, the recorded one."""
     pull = event("pull_request_review_comment.created")["pull_request"]
-    return {"repo": REPO, "tokens": {JOB_TOKEN: "github-actions", APP_TOKEN: APP_SLUG, "other-token": "other-app"},
+    return {"host": host, "repo": REPO, "tokens": {JOB_TOKEN: "github-actions", APP_TOKEN: APP_SLUG, "other-token": "other-app"},
             "checks": [], "reviews": {}, "comments": {}, "pulls": {"7": pull},
-            "permissions": {"alice": "write", "bob": "admin", "carol": "maintain", "reader": "read"}, "fail": [], "next_id": 1000}
+            "permissions": {"alice": "write", "bob": "admin", "carol": "maintain", "reader": "read"}, "runs": [], "jobs": {}, "fail": [],
+            "next_id": 1000}
+
+
+def on_host(host: str) -> dict:
+    """What Actions gives a job on `host`: its server's address, as a GHE.com tenant's and a server's jobs read it."""
+    return {"GITHUB_SERVER_URL": f"https://{host}"}
 
 
 CHECK = "Code Review Result"                                # the check's name, the only one written

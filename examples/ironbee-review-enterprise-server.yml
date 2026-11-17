@@ -1,0 +1,35 @@
+# .github/workflows/ironbee-review.yml in a repository on GitHub Enterprise Server: the workflow without a queue, from
+# the server's copy of this repository. Keep this job alone in the file: the restart step re-runs a run, every job of it.
+name: IronBee
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  merge_group:
+  push:                           # registers the repository when this file reaches the default branch
+    branches: [main]              #   the repository's default branch
+    paths: ['.github/workflows/ironbee-review.yml']
+  workflow_dispatch:              # and when the workflow is started by hand
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  issues: read
+  actions: write                  # the restart step starts again a review a newer run replaced while it waited
+jobs:
+  code-review:
+    name: Code Review
+    uses: acme/ironbee-github-runner/.github/workflows/code-review-no-queue.yml@v1.0.0
+    with:
+      model-provider: anthropic
+      runner-repository: acme/ironbee-github-runner      # the copy named in `uses:`
+      runs-on: '["self-hosted","linux"]'                 # the server's own runners, with Docker
+      # github-ca-certificate: the private authority's certificates (PEM), when one signed the server's certificate
+    secrets:
+      ironbee-api-key: ${{ secrets.IRONBEE_API_KEY }}
+      registry-token: ${{ secrets.IRONBEE_REGISTRY_TOKEN }}
+      model-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      runner-token: ${{ secrets.IRONBEE_RUNNER_TOKEN }}  # reads the copy; a Dependabot secret too

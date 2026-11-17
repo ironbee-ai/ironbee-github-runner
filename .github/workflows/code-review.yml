@@ -10,7 +10,10 @@
 #   fallback  a pull request's review that did not succeed: a neutral check on the event's head
 #
 # Event fields never reach a script as text to run: the scripts read the event file and their environment. The
-# scripts are this workflow's own, fetched at the commit this file was read from. Every action is pinned by commit.
+# scripts are this workflow's own, fetched at the commit this file was read from; where the job names no such commit
+# (GitHub Enterprise Server), from the copy `runner-repository` names, at this release's tag. Every action is pinned by
+# commit. A host whose Actions know no concurrency queue calls code-review-no-queue.yml, which
+# scripts/build-no-queue.sh makes from code-review.yml.
 name: IronBee code review
 
 on:
@@ -100,6 +103,16 @@ on:
         type: string
         required: false
         default: "true"
+      runner-repository:
+        description: "This workflow's copy (owner/name), on a host whose jobs do not name their workflow's repository (GitHub Enterprise Server)"
+        type: string
+        required: false
+        default: ""
+      github-ca-certificate:
+        description: "The certificates (PEM) of the private authority that signed the GitHub server's certificate"
+        type: string
+        required: false
+        default: ""
     secrets:
       # Needed for every review, but not required here: a run GitHub gives no secrets (a Dependabot pull request's) must
       # still reach the decide step, which checks that both are set and otherwise writes the neutral check.
@@ -126,6 +139,9 @@ on:
         required: false
       app-private-key:
         description: "The customer's own GitHub App's private key"
+        required: false
+      runner-token:
+        description: "A read-only token for this workflow's copy, which the job's token cannot read; needed off github.com"
         required: false
 
 
@@ -159,13 +175,23 @@ jobs:
     env:
       IRONBEE_IMAGE: docker.io/ironbeeai/ironbee-code-review-runner@sha256:b0d70bf52444f89ad3e26a67dfe5533e9898574e3736d8a842b5d4b28128871d
     steps:
+      # A job that names no workflow repository would otherwise fetch the calling repository's own `scripts`.
+      - name: The workflow's repository
+        id: repository
+        if: job.workflow_repository == '' && inputs.runner-repository == ''
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          echo "::error::runner-repository is not given: on a host whose jobs do not name their workflow's repository, the calling file names this workflow's copy there"
+          exit 2
       - name: Get the workflow's scripts
         id: scripts
         timeout-minutes: 5
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: ${{ job.workflow_repository || inputs.runner-repository }}
+          ref: ${{ job.workflow_sha || 'v1.0.0-rc.8' }}         # the release's tag, where the job names no commit
+          token: ${{ secrets.runner-token || github.token }}
           path: .ironbee-github-runner
           sparse-checkout: scripts
           persist-credentials: false
@@ -257,6 +283,7 @@ jobs:
           IRONBEE_APP_ID: ${{ secrets.app-id }}
           IRONBEE_APP_PRIVATE_KEY: ${{ secrets.app-private-key }}
           IRONBEE_APP_SLUG: ${{ inputs.app-slug }}
+          IRONBEE_GITHUB_CA_CERTIFICATE: ${{ inputs.github-ca-certificate }}
           IRONBEE_ACTION: ${{ steps.decide.outputs.action }}
           IRONBEE_PULL_REQUEST: ${{ steps.decide.outputs.pull-request }}
           IRONBEE_COMMENT_ID: ${{ steps.decide.outputs.comment-id }}

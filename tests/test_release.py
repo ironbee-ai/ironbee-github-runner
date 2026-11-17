@@ -1,5 +1,5 @@
 """The release (scripts/release.sh), step by step, in a repository of its own whose origin is a local one: the inputs and
-the names they give, the plan over the tags, the stamp (of the real workflow), the image against a stub registry and
+the names they give, the plan over the tags, the stamp (of the real workflows), the image against a stub registry and
 daemon (tests/stubs/docker), the signature against a stub cosign (tests/stubs/cosign), the commit, the tags and the
 push, and the GitHub release against the stub GitHub. No network."""
 from __future__ import annotations
@@ -14,6 +14,8 @@ import unittest
 from support import REPO, ROOT, ScriptTest, StubApi
 
 WORKFLOW = ".github/workflows/code-review.yml"
+NO_QUEUE = ".github/workflows/code-review-no-queue.yml"     # made from WORKFLOW, stamped beside it
+STAMPED = (WORKFLOW, NO_QUEUE)
 IMAGE = "docker.io/ironbeeai/ironbee-code-review-runner"
 DIGEST = "sha256:" + "a" * 64                                # the index the release names
 OTHER = "sha256:" + "b" * 64                                 # another index
@@ -32,9 +34,14 @@ def index(**platforms) -> dict:
                           for a, d in platforms.items()]}
 
 
-def stamped(text: str, digest: str, version: str) -> str:
+def stamped(text: str, digest: str, version: str, tag: str) -> str:
     text = re.sub(rf"(IRONBEE_IMAGE: {re.escape(IMAGE)}@)sha256:[0-9a-f]{{64}}", rf"\g<1>{digest}", text)
+    text = re.sub(r"(ref: \$\{\{ job\.workflow_sha \|\| ')[^']*(' \}\})", rf"\g<1>{tag}\g<2>", text)
     return re.sub(r"(IRONBEE_RUNNER_VERSION: )\d+\.\d+\.\d+", rf"\g<1>{version}", text)
+
+
+def tag_line(text: str) -> str:
+    return next(line for line in text.splitlines() if "job.workflow_sha ||" in line)
 
 
 class Release(ScriptTest):
@@ -44,7 +51,7 @@ class Release(ScriptTest):
         self.git("init", "--quiet", "--bare", "--initial-branch=main", str(self.origin), cwd=self.tmp)
         self.git("init", "--quiet", "--initial-branch=main", str(self.work), cwd=self.tmp)
         (self.work / ".github" / "workflows").mkdir(parents=True)
-        shutil.copy(ROOT / WORKFLOW, self.work / WORKFLOW)
+        for path in STAMPED: shutil.copy(ROOT / path, self.work / path)
         self.git("add", ".")
         self.git("commit", "--quiet", "-m", "the workflow")
         self.git("remote", "add", "origin", str(self.origin))
@@ -68,9 +75,11 @@ class Release(ScriptTest):
         return self.git("for-each-ref", "--format=%(refname) %(objectname)", cwd=self.origin)
 
     def tag(self, name: str, digest: str = DIGEST, version: str = "1.0.0") -> None:
-        """A tag as a release writes it: a commit on main naming `digest` and `version`, tagged and pushed."""
-        path = self.work / WORKFLOW
-        path.write_text(stamped(path.read_text(), digest, version))
+        """A tag as a release writes it: a commit on main whose workflows name `digest`, `version` and the tag, tagged and
+        pushed."""
+        for each in STAMPED:
+            path = self.work / each
+            path.write_text(stamped(path.read_text(), digest, version, name))
         self.git("commit", "--quiet", "--allow-empty", "-am", f"chore(release): {name}")
         self.git("tag", "-a", name, "-m", name)
         self.git("push", "--quiet", "origin", "main", f"refs/tags/{name}")
@@ -153,7 +162,7 @@ class Inputs(Release):
 
     def test_the_list_of_workflows(self):
         ran = self.run_script("release.sh", args=("workflows",))
-        self.assertEqual((ran.code, ran.out), (0, f"{WORKFLOW} {IMAGE}\n"))
+        self.assertEqual((ran.code, ran.out), (0, f"{WORKFLOW} {IMAGE}\n{NO_QUEUE} {IMAGE}\n"))
 
 
 class Plan(Release):
@@ -212,27 +221,106 @@ class Plan(Release):
         self.assertEqual(ran.code, 2)
         self.assertIn(f"{WORKFLOW}: the IRONBEE_RUNNER_VERSION line is there 0 times, not once", ran.out)
 
+    def test_the_workflow_without_a_queue_is_what_its_script_makes(self):
+        path = self.work / NO_QUEUE
+        path.write_text(path.read_text().replace("timeout-minutes: 10\n        shell: bash\n        run: bash .ironbee-github-runner/scripts/restart.sh",
+                                                 "timeout-minutes: 30\n        shell: bash\n        run: bash .ironbee-github-runner/scripts/restart.sh"))
+        ran = self.release("plan")
+        self.assertEqual(ran.code, 2, ran.out)
+        self.assertIn(f"{NO_QUEUE} is not what scripts/build-no-queue.sh makes from {WORKFLOW}", ran.out)
+
+    def test_a_tag_that_names_another_tag_is_never_moved(self):
+        self.tag("v1.0.0-rc.1"); self.git("tag", "v1.0.0-rc.2", "v1.0.0-rc.1"); self.git("push", "--quiet", "origin", "v1.0.0-rc.2")
+        ran = self.release("plan")
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn("v1.0.0-rc.2 exists and names", ran.out)
+        self.assertIn("tag v1.0.0-rc.1: a tag is never moved", ran.out)
+
+    def test_a_run_again_of_a_release_before_the_workflow_without_a_queue(self):
+        """The releases to v1.0.0-rc.8 tagged code-review.yml alone, its checkout naming no tag: such a tag of this image
+        and version is this release, pushed."""
+        main = self.ref("main")
+        path = self.work / WORKFLOW
+        text = stamped(path.read_text(), DIGEST, "1.0.0", "x")
+        path.write_text(text.replace(tag_line(text), "          ref: ${{ job.workflow_sha }}"))
+        self.git("rm", "--quiet", NO_QUEUE)
+        self.git("commit", "--quiet", "-am", "chore(release): v1.0.0-rc.2"); self.git("tag", "-a", "v1.0.0-rc.2", "-m", "old")
+        self.git("push", "--quiet", "origin", "refs/tags/v1.0.0-rc.2")
+        self.git("checkout", "--quiet", main, "--", "."); self.git("commit", "--quiet", "-m", "main moves on"); self.git("push", "--quiet", "origin", "HEAD:main")
+        ran = self.release("plan")
+        self.assertEqual(ran.code, 0, ran.out)
+        self.assertIn("::notice::v1.0.0-rc.2 is already pushed with this image and version", ran.out)
+        ran = self.release("plan", digest=OTHER)
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn("a tag is never moved", ran.out)
+
+    def test_a_tag_whose_first_workflow_names_its_tag_and_lacks_the_workflow_without_a_queue(self):
+        """Its first workflow is of a release that tags both, so the missing one is no release's doing."""
+        main = self.ref("main")
+        path = self.work / WORKFLOW
+        path.write_text(stamped(path.read_text(), DIGEST, "1.0.0", "v1.0.0-rc.2"))
+        self.git("rm", "--quiet", NO_QUEUE)
+        self.git("commit", "--quiet", "-am", "chore(release): v1.0.0-rc.2"); self.git("tag", "-a", "v1.0.0-rc.2", "-m", "by hand")
+        self.git("push", "--quiet", "origin", "refs/tags/v1.0.0-rc.2")
+        self.git("checkout", "--quiet", main, "--", "."); self.git("commit", "--quiet", "-m", "main moves on"); self.git("push", "--quiet", "origin", "HEAD:main")
+        ran = self.release("plan")
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn(f"v1.0.0-rc.2 exists without {NO_QUEUE}: a tag is never moved", ran.out)
+        ran = self.release("publish")
+        self.assertEqual(ran.code, 1, ran.out)
+        self.assertIn(f"v1.0.0-rc.2 exists without {NO_QUEUE}: a tag is never moved", ran.out)
+
+    def test_a_tag_whose_first_workflow_names_its_tag_and_whose_later_one_names_none(self):
+        """The later workflow is no stamp of this release, so the tag is refused, not taken as pushed."""
+        main = self.ref("main")
+        for name in (WORKFLOW, NO_QUEUE):
+            path = self.work / name
+            path.write_text(stamped(path.read_text(), DIGEST, "1.0.0", "v1.0.0-rc.2"))
+        later = self.work / NO_QUEUE
+        later.write_text(later.read_text().replace(tag_line(later.read_text()), "          ref: ${{ job.workflow_sha }}"))
+        self.git("commit", "--quiet", "-am", "chore(release): v1.0.0-rc.2"); self.git("tag", "-a", "v1.0.0-rc.2", "-m", "by hand")
+        self.git("push", "--quiet", "origin", "refs/tags/v1.0.0-rc.2")
+        self.git("checkout", "--quiet", main, "--", "."); self.git("commit", "--quiet", "-m", "main moves on"); self.git("push", "--quiet", "origin", "HEAD:main")
+        for step in ("plan", "publish"):
+            with self.subTest(step=step):
+                ran = self.release(step)
+                self.assertEqual(ran.code, 1, ran.out)
+                self.assertIn(f"v1.0.0-rc.2 exists and its {NO_QUEUE} names no tag: a tag is never moved", ran.out)
+
 
 class Stamp(Release):
-    def test_the_digest_and_the_version_and_nothing_else(self):
-        before = (ROOT / WORKFLOW).read_text().splitlines()
-        ran = self.release("stamp", tag="1.10.0", digest=OTHER)
-        self.assertEqual(ran.code, 0, ran.out)
-        after = (self.work / WORKFLOW).read_text().splitlines()
-        self.assertEqual(len(after), len(before))
-        changed = [(a, b) for a, b in zip(before, after) if a != b]
-        self.assertEqual(len(changed), 2, changed)
-        (_, image), (old, new) = sorted(changed, key=lambda c: "IRONBEE_RUNNER_VERSION" in c[0])
-        self.assertEqual(image.strip(), f"IRONBEE_IMAGE: {IMAGE}@{OTHER}")
-        self.assertRegex(new, r"^\s+IRONBEE_RUNNER_VERSION: 1\.10\.0\s+# ")
-        self.assertEqual(new.index("#"), old.index("#"))      # the comment keeps its column
-        self.assertIn(f"stamped {WORKFLOW}: {IMAGE}@{OTHER}", ran.out)
+    def test_the_digest_the_version_and_the_tag_and_nothing_else(self):
+        for tag in ("1.10.0", "1.10.0-rc.12"):
+            for path in STAMPED:
+                with self.subTest(tag=tag, path=path):
+                    (self.work / path).write_text((ROOT / path).read_text())
+                    before = (ROOT / path).read_text().splitlines()
+                    ran = self.release("stamp", tag=tag, digest=OTHER)
+                    self.assertEqual(ran.code, 0, ran.out)
+                    after = (self.work / path).read_text().splitlines()
+                    self.assertEqual(len(after), len(before))
+                    changed = {a.split(":")[0].strip(): (a, b) for a, b in zip(before, after) if a != b}
+                    self.assertEqual(set(changed), {"IRONBEE_IMAGE", "IRONBEE_RUNNER_VERSION", "ref"}, changed)
+                    self.assertEqual(changed["IRONBEE_IMAGE"][1].strip(), f"IRONBEE_IMAGE: {IMAGE}@{OTHER}")
+                    old, new = changed["IRONBEE_RUNNER_VERSION"]
+                    self.assertRegex(new, r"^\s+IRONBEE_RUNNER_VERSION: 1\.10\.0\s+# ")
+                    self.assertEqual(new.index("#"), old.index("#"))      # the comment keeps its column
+                    old, new = changed["ref"]
+                    self.assertEqual(new.split("#")[0].strip(), f"ref: ${{{{ job.workflow_sha || 'v{tag}' }}}}")
+                    self.assertEqual(new.index("#"), old.index("#"))
+                    self.assertIn(f"stamped {path}: {IMAGE}@{OTHER}", ran.out)
+                    self.assertIn(f"tag v{tag} (was ", ran.out)
+
+    def test_the_stamped_workflow_without_a_queue_is_still_what_its_script_makes(self):
+        self.assertEqual(self.release("stamp", tag="1.10.0", digest=OTHER).code, 0)
+        p = subprocess.run(["bash", str(ROOT / "scripts" / "build-no-queue.sh"), "--check"], cwd=self.work, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stdout)
 
     def test_twice_is_once(self):
         self.release("stamp")
-        once = (self.work / WORKFLOW).read_text()
+        once = [(self.work / path).read_text() for path in STAMPED]
         self.assertEqual(self.release("stamp").code, 0)
-        self.assertEqual((self.work / WORKFLOW).read_text(), once)
+        self.assertEqual([(self.work / path).read_text() for path in STAMPED], once)
 
     def test_another_image_is_left_as_it_is(self):
         path = self.work / WORKFLOW
@@ -255,13 +343,17 @@ class Stamp(Release):
         text = (ROOT / WORKFLOW).read_text()
         image = next(line for line in text.splitlines() if f"IRONBEE_IMAGE: {IMAGE}@" in line)
         version = next(line for line in text.splitlines() if "IRONBEE_RUNNER_VERSION:" in line)
+        tag = tag_line(text)
         variants = {"the image twice": (text.replace(image, image + "\n" + image), "the image line naming"),
                     "no image": (text.replace(image, ""), "the image line naming"),
                     "the image quoted": (text.replace(image, image.replace("IRONBEE_IMAGE: ", 'IRONBEE_IMAGE: "') + '"'), "the image line naming"),
                     "the image under both keys": (text.replace(image, image + "\n" + image.replace("IRONBEE_IMAGE:", "image:")), "the image line naming"),
                     "a short digest": (text.replace(image, image[:-1]), "the image line naming"),
                     "the version twice": (text.replace(version, version + "\n" + version), "IRONBEE_RUNNER_VERSION line"),
-                    "the version quoted": (text.replace(version, version.replace(": 1.0.0", ': "1.0.0"')), "IRONBEE_RUNNER_VERSION line")}
+                    "the version quoted": (text.replace(version, version.replace(": 1.0.0", ': "1.0.0"')), "IRONBEE_RUNNER_VERSION line"),
+                    "the tag twice": (text.replace(tag, tag + "\n" + tag), "the scripts' tag line"),
+                    "no tag": (text.replace(tag, "          ref: ${{ job.workflow_sha }}"), "the scripts' tag line"),
+                    "the tag not a tag": (text.replace(tag, tag.replace("|| 'v", "|| '")), "the scripts' tag line")}
         for name, (variant, says) in variants.items():
             with self.subTest(name):
                 (self.work / WORKFLOW).write_text(variant)
@@ -450,8 +542,11 @@ class Publish(Release):
         for tag, message in (("v1.0.0-rc.2", "1.0.0-rc.2: a pre-release for IronBee's own tests"), ("v0", "v0: the newest release or pre-release (v1.0.0-rc.2)")):
             self.assertEqual(self.git("cat-file", "-t", f"refs/tags/{tag}", cwd=self.origin), "tag")     # annotated
             self.assertEqual(self.git("tag", "-l", "--format=%(taggername) %(taggeremail)|%(contents:subject)", tag, cwd=self.origin), f"{BOT}|{message}")
-        self.assertIn(f"IRONBEE_IMAGE: {IMAGE}@{DIGEST}", self.git("show", f"v1.0.0-rc.2:{WORKFLOW}", cwd=self.origin))
-        self.assertEqual(self.git("diff", "--name-only", base, head, cwd=self.origin), WORKFLOW)
+        for path in STAMPED:
+            shown = self.git("show", f"v1.0.0-rc.2:{path}", cwd=self.origin)
+            self.assertIn(f"IRONBEE_IMAGE: {IMAGE}@{DIGEST}", shown)
+            self.assertIn("ref: ${{ job.workflow_sha || 'v1.0.0-rc.2' }}", shown)
+        self.assertEqual(self.git("diff", "--name-only", base, head, cwd=self.origin).splitlines(), sorted(STAMPED))
         self.assertEqual(self.git("status", "--porcelain"), "")
 
     def test_a_release_moves_its_major_versions_tag_and_v0(self):
@@ -535,12 +630,15 @@ class Publish(Release):
         self.assertEqual(ran.code, 0, ran.out)
         self.assertIn("tag v1.0.0-rc.2, version 1.0.0 (rc.2)", ran.out); self.assertNotIn("floating tag", ran.out)
 
-    def test_a_pre_release_promoted_as_it_is_is_an_empty_commit(self):
+    def test_a_pre_release_promoted_as_it_is_stamps_its_tag_alone(self):
         self.tag("v1.0.0-rc.2")
         ran = self.release("publish", tag="1.0.0")
         self.assertEqual(ran.code, 0, ran.out)
         head = self.ref("main")
-        self.assertEqual(self.git("diff", "--name-only", f"{head}~1", head, cwd=self.origin), "")
+        diff = self.git("diff", "--unified=0", f"{head}~1", head, cwd=self.origin).splitlines()
+        lines = [line for line in diff if line[:1] in ("+", "-") and not line.startswith(("+++", "---"))]
+        self.assertEqual(len(lines), 2 * len(STAMPED), lines)
+        self.assertTrue(all("ref: ${{ job.workflow_sha || 'v1.0.0" in line for line in lines), lines)
         self.assertEqual(self.ref("refs/tags/v1.0.0"), head)
 
     def test_a_run_again_after_its_push_moves_nothing(self):

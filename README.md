@@ -11,7 +11,10 @@ that you can make a required check.
   server.
 - **Your settings and rules stay in the IronBee console**, as for IronBee's cloud product. Each run asks IronBee for
   them, and for the licence, when it starts.
-- **This release supports github.com.** Pull requests from forks are not reviewed.
+- **github.com, GHE.com and GitHub Enterprise Server.** github.com includes GitHub Enterprise Cloud's organizations,
+  with their policies and managed users. A GHE.com tenant or a GitHub Enterprise Server (3.19 or later) calls a copy of
+  this repository on its own host ([On GitHub Enterprise](docs/setup.md#on-github-enterprise)). Pull requests from
+  forks are not reviewed.
 
 ## What reaches IronBee
 
@@ -75,6 +78,7 @@ The [setup guide](docs/setup.md) explains each step and every input.
 | Page | What it covers |
 |---|---|
 | [Setup](docs/setup.md) | the workflow file, every input and secret, registering a repository, where the job runs, commands |
+| [On GitHub Enterprise](docs/setup.md#on-github-enterprise) | GHE.com, GitHub Enterprise Server and its workflow without a queue, a copy of this repository, Enterprise Cloud's policies and managed users |
 | [Identity: the job token or your own GitHub App](docs/identity.md) | who the comments and the check are written as; Dependabot |
 | [Models](docs/models.md) | the model's inputs and secrets, the tasks and the model each calls, what a model must support |
 | [Supported models](docs/supported-models.md) | what was measured, and on which models |

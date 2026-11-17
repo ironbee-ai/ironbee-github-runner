@@ -51,6 +51,28 @@ class TheCall(Register):
         self.assertEqual(json.loads(req["body"])["repository"], {"provider": "github", "path": "acme/gadgets"})
         self.assertIn("registered acme/gadgets", ran.out)
 
+    def test_on_github_com_the_path_has_no_host(self):
+        for server in ("https://github.com", "https://GitHub.com/", ""):
+            with self.subTest(server=server):
+                ran, [req] = self.register(registered(), env={"GITHUB_SERVER_URL": server})
+                self.assertEqual(json.loads(req["body"]), json.loads((FIXTURES / "register-1.0.0.json").read_text()))
+                self.assertIn(f"registered {REPO}: project", ran.out)
+
+    def test_off_github_com_the_path_names_its_host(self):
+        """A GHE.com tenant's or a server's repository is <host>:owner/name, the host as the image reads it."""
+        servers = {"https://acme.ghe.com": "acme.ghe.com", "https://ghes.acme.com": "ghes.acme.com",
+                   "https://GHES.Acme.com:443/": "ghes.acme.com", "http://10.0.0.7": "10.0.0.7"}            # an address: the API's to refuse
+        for server, host in servers.items():
+            with self.subTest(server=server):
+                ran, [req] = self.register(registered(), env={"GITHUB_SERVER_URL": server})
+                self.assertEqual(ran.code, 0, ran.out)
+                self.assertEqual(json.loads(req["body"]), {"repository": {"provider": "github", "path": f"{host}:{REPO}"}, "runner": {"version": "1.0.0"}})
+                self.assertIn(f"registered {host}:{REPO}: project {PROJECT}, made now", ran.out)
+
+    def test_a_repository_named_by_hand_on_a_server(self):
+        ran, [req] = self.register(registered(), env={"GITHUB_SERVER_URL": "https://ghes.acme.com"}, args=("acme/gadgets",))
+        self.assertEqual(json.loads(req["body"])["repository"], {"provider": "github", "path": "ghes.acme.com:acme/gadgets"})
+
     def test_the_api_url_may_end_with_a_slash(self):
         api = StubApi([registered()]); self.addCleanup(api.stop)
         ran = self.run_script("register.sh", {"IRONBEE_API_KEY": "k", "IRONBEE_RUNNER_VERSION": "1.0.0", "IRONBEE_API_URL": api.url + "/", "NO_PROXY": "*", "no_proxy": "*"})

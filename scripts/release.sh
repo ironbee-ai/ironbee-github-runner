@@ -11,13 +11,14 @@
 #   workflows        the workflows a release stamps, each with the image it runs
 #   digest           each image's index digest, read once for the tag. GITHUB_OUTPUT gets digest
 #   plan             the release's tag new, or this very release's (a run again after its push); a release never
-#                    below the newest one; no pre-release of a released version; every listed workflow stampable
+#                    below the newest one; no pre-release of a released version; every listed workflow stampable, and
+#                    code-review-no-queue.yml what scripts/build-no-queue.sh makes from code-review.yml
 #   index            each image's index by digest: linux/amd64 and linux/arm64 alone
 #   image ARCH       each image's linux/ARCH image, pulled by digest on a runner of that architecture and run with no
 #                    network: its runner reports the version
 #   signature        each index's signature with the committed public key: a release's must verify, a pre-release's
 #                    may have been signed for IronBee's own tests. GITHUB_OUTPUT gets signature: verified or tests
-#   stamp            each listed workflow given the digest and the version, in the working tree
+#   stamp            each listed workflow given the digest, the version and the tag, in the working tree
 #   token            whether the push's token (IRONBEE_PUSH_TOKEN) may push a workflow file: a classic token's scopes
 #                    must hold `workflow`; a fine-grained token's permissions cannot be read, and a notice says so
 #   publish          the stamp committed on main, tagged, the floating tag moved, all pushed at once; nothing when the
@@ -29,10 +30,11 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# The reusable workflows a release stamps, `<workflow> <image>` a line, all given the same version. A second line's
-# image would be read at the same tag, but the steps carry one digest: the input check refuses a second line until they
-# carry one per image.
-WORKFLOWS='.github/workflows/code-review.yml docker.io/ironbeeai/ironbee-code-review-runner'
+# The reusable workflows a release stamps, `<workflow> <image>` a line, all given the same version and tag. The first is
+# the one the releases before code-review-no-queue.yml tagged alone. Another image would be read at the same tag, but
+# the steps carry one digest: the input check refuses a second image until they carry one per image.
+WORKFLOWS='.github/workflows/code-review.yml docker.io/ironbeeai/ironbee-code-review-runner
+.github/workflows/code-review-no-queue.yml docker.io/ironbeeai/ironbee-code-review-runner'
 KEY=ironbee-image-signing.pem                                   # IronBee's public key: a release's image verifies with it
 PLATFORMS="linux/amd64 linux/arm64"
 
@@ -44,6 +46,10 @@ ZEROS=sha256:$(printf '%064d' 0)
 # (v1.0.0-rc.1 and -rc.2), which a run again of such a release reads at its tag.
 IMAGE_LINE='^([[:space:]]*(IRONBEE_IMAGE|image):[[:space:]]+)([^@[:space:]]+)@(sha256:[0-9a-f]{64})([[:space:]].*)?$'
 VERSION_LINE='^([[:space:]]*IRONBEE_RUNNER_VERSION:[[:space:]]+)([0-9]+\.[0-9]+\.[0-9]+)([[:space:]].*)?$'
+# The tag line: the scripts' checkout's ref where the job names no commit, `${{ job.workflow_sha || '<tag>' }}`. The
+# releases before it (to v1.0.0-rc.8) have none, which a run again of such a release reads at its tag.
+Q="'"
+TAG_LINE="^([[:space:]]*ref:[[:space:]]+[\$][{][{] job[.]workflow_sha [|][|] ${Q})(v[^${Q}[:space:]]*)(${Q} [}][}])([[:space:]].*)?\$"
 
 notice() { printf '::notice::%s\n' "$(command_text "$*")"; }
 
@@ -64,7 +70,7 @@ tools() {
 # prerelease (rc.<N>, or empty for a release), tag (the repository's, v<image tag>) and floating (v<MAJOR> follows the
 # releases of that major version; v0, the newest of every release and pre-release, moves with each).
 inputs() {
-  local lines
+  local count
   image_tag=${IRONBEE_IMAGE_TAG:-}
   [[ $image_tag =~ $IMAGE_TAG ]] || fail 2 "image-tag is not MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-rc.<N>, the image's tag with no v"
   major=${BASH_REMATCH[1]}
@@ -77,8 +83,13 @@ inputs() {
     [ "$major" != 0 ] || fail 2 "a release of major version 0: v0 is the tag of the newest release or pre-release"
     floating=v$major
   fi
-  lines=$(printf '%s\n' "$WORKFLOWS" | grep -c .)
-  [ "$lines" = 1 ] || fail 2 "the release lists $lines workflows, and its steps carry the digest of one image"
+  count=$(images | grep -c .)
+  [ "$count" = 1 ] || fail 2 "the release lists $count images, and its steps carry the digest of one image"
+}
+
+# images: the images the listed workflows run, each once, in the order they are listed.
+images() {
+  printf '%s\n' "$WORKFLOWS" | awk 'NF && !seen[$2]++ { print $2 }'
 }
 
 # The index digest the digest step read for the tag: every later step works by it, and never reads the tag again.
@@ -163,13 +174,26 @@ newest_release() {
   printf '%s' "$newest"
 }
 
-# stamp_file FILE NAME IMAGE OUT: FILE with its one image line naming IMAGE given the release's digest and its one
-# IRONBEE_RUNNER_VERSION line given the release's version, written to OUT; a trailing comment keeps its column. Sets
-# was_digest and was_version to what FILE named. NAME is FILE's name in the messages.
+# keep_column WAS NOW REST: REST (a trailing comment and the space before it, or nothing) with that space made as much
+# wider or narrower as NOW is shorter or longer than WAS, so the comment keeps its column; one space at least.
+keep_column() {
+  local rest=$3 lead width
+  [ -n "$rest" ] || return 0
+  lead=${rest%%[![:space:]]*}
+  width=$((${#1} + ${#lead} - ${#2}))
+  [ "$width" -ge 1 ] || width=1
+  printf '%*s%s' "$width" '' "${rest#"$lead"}"
+}
+
+# stamp_file FILE NAME IMAGE OUT [tagged]: FILE with its one image line naming IMAGE given the release's digest, its
+# one IRONBEE_RUNNER_VERSION line the release's version and its one tag line the release's tag, written to OUT; a
+# trailing comment keeps its column. Sets was_digest, was_version and was_tag to what FILE named. NAME is FILE's name in
+# the messages. `tagged`: FILE is a pushed tag's, which may be of a release before the tag line.
 stamp_file() {
-  local file=$1 name=$2 image=$3 out=$4 line images=0 versions=0 rest lead width
+  local file=$1 name=$2 image=$3 out=$4 mode=${5:-} line images=0 versions=0 tags=0 head rest
   was_digest=""
   was_version=""
+  was_tag=""
   while IFS= read -r line || [ -n "$line" ]; do
     if [[ $line =~ $IMAGE_LINE ]] && [ "${BASH_REMATCH[3]}" = "$image" ]; then
       images=$((images + 1))
@@ -178,31 +202,46 @@ stamp_file() {
     elif [[ $line =~ $VERSION_LINE ]]; then
       versions=$((versions + 1))
       was_version=${BASH_REMATCH[2]}
+      head=${BASH_REMATCH[1]}
       rest=${BASH_REMATCH[3]}
-      line=${BASH_REMATCH[1]}$version
-      if [ -n "$rest" ]; then
-        lead=${rest%%[![:space:]]*}
-        width=$((${#was_version} + ${#lead} - ${#version}))
-        [ "$width" -ge 1 ] || width=1
-        line=$line$(printf '%*s' "$width" '')${rest#"$lead"}
-      fi
+      line=$head$version$(keep_column "$was_version" "$version" "$rest")
+    elif [[ $line =~ $TAG_LINE ]]; then
+      tags=$((tags + 1))
+      was_tag=${BASH_REMATCH[2]}
+      head=${BASH_REMATCH[1]}$tag${BASH_REMATCH[3]}
+      rest=${BASH_REMATCH[4]}
+      line=$head$(keep_column "$was_tag" "$tag" "$rest")
     fi
     printf '%s\n' "$line"
   done < "$file" > "$out"
   [ "$images" = 1 ] || fail 2 "$name: the image line naming $image is there $images times, not once"
   [ "$versions" = 1 ] || fail 2 "$name: the IRONBEE_RUNNER_VERSION line is there $versions times, not once"
+  if [ "$tags" != 1 ] && ! { [ "$tags" = 0 ] && [ "$mode" = tagged ]; }; then
+    fail 2 "$name: the scripts' tag line (ref: \${{ job.workflow_sha || '<tag>' }}) is there $tags times, not once"
+  fi
 }
 
-# pushed: whether the release's tag exists, its commit's workflows naming this image and this version: a run again
-# after its push. A tag that names anything else is refused, since a tag is never moved.
+# pushed: whether the release's tag exists, its commit's workflows naming this image, this version and this tag: a run
+# again after its push. A tag that names anything else is refused, since a tag is never moved. A release before
+# code-review-no-queue.yml tagged the first workflow alone, with no tag line; a tag whose first workflow has the tag line
+# holds every listed workflow.
 pushed() {
-  local workflow image
+  local workflow image n=0 old=false
   git rev-parse -q --verify "refs/tags/$tag" > /dev/null || return 1
   while read -r workflow image <&3; do
-    git show "refs/tags/$tag:$workflow" > "$IRONBEE_TMP/tagged" 2> /dev/null || fail 1 "$tag exists without $workflow: a tag is never moved"
-    stamp_file "$IRONBEE_TMP/tagged" "$tag:$workflow" "$image" "$IRONBEE_TMP/tagged.stamped"
-    if [ "$was_digest" != "$digest" ] || [ "$was_version" != "$version" ]; then
-      fail 1 "$tag exists and names $image@$was_digest, version $was_version: a tag is never moved"
+    n=$((n + 1))
+    if ! git show "refs/tags/$tag:$workflow" > "$IRONBEE_TMP/tagged" 2> /dev/null; then
+      [ "$old" = true ] || fail 1 "$tag exists without $workflow: a tag is never moved"
+      continue
+    fi
+    stamp_file "$IRONBEE_TMP/tagged" "$tag:$workflow" "$image" "$IRONBEE_TMP/tagged.stamped" tagged
+    if [ "$n" = 1 ] && [ -z "$was_tag" ]; then
+      old=true
+    elif [ "$old" = false ] && [ -z "$was_tag" ]; then
+      fail 1 "$tag exists and its $workflow names no tag: a tag is never moved"
+    fi
+    if [ "$was_digest" != "$digest" ] || [ "$was_version" != "$version" ] || { [ -n "$was_tag" ] && [ "$was_tag" != "$tag" ]; }; then
+      fail 1 "$tag exists and names $image@$was_digest, version $was_version${was_tag:+, tag $was_tag}: a tag is never moved"
     fi
   done 3<<< "$WORKFLOWS"
   return 0
@@ -241,6 +280,8 @@ step_plan() {
     [ -f "$workflow" ] || fail 2 "$workflow is listed for the release and missing"
     stamp_file "$workflow" "$workflow" "$image" "$IRONBEE_TMP/stamped"
   done 3<<< "$WORKFLOWS"
+  # The stamp gives both files the same lines, so the second stays what the first makes.
+  bash "$IRONBEE_SCRIPTS/build-no-queue.sh" --check || exit 2
   if pushed; then
     notice "$tag is already pushed with this image and version: this run moves nothing, and makes the GitHub release if it is missing"
     say "tag $tag, version $version${prerelease:+ ($prerelease)}"
@@ -257,27 +298,27 @@ step_digest() {
   local image named
   tools docker jq
   [ -n "${GITHUB_OUTPUT:-}" ] || fail 2 "GITHUB_OUTPUT is not set"
-  while read -r _ image <&3; do
+  while read -r image <&3; do
     docker buildx imagetools inspect "$image:$image_tag" --format '{{json .Manifest}}' > "$IRONBEE_TMP/tagged.json" 2> "$IRONBEE_TMP/docker.err" \
       || fail 1 "could not read $image:$image_tag: $(tail -n 1 "$IRONBEE_TMP/docker.err")"
     named=$(jq -r '.digest // empty' "$IRONBEE_TMP/tagged.json" 2> /dev/null || true)
     [[ $named =~ $DIGEST ]] || fail 1 "$image:$image_tag names no index digest"
     say "$image:$image_tag is $image@$named: the release works by this digest from here on"
-  done 3<<< "$WORKFLOWS"
+  done 3<<< "$(images)"
   echo "digest=$named" >> "$GITHUB_OUTPUT"
 }
 
 step_index() {
   local image amd64 arm64
   tools docker jq
-  while read -r _ image <&3; do
+  while read -r image <&3; do
     read_index "$image@$digest"
     platform_digest amd64
     amd64=$platform
     platform_digest arm64
     arm64=$platform
     say "$image@$digest: linux/amd64 $amd64, linux/arm64 $arm64"
-  done 3<<< "$WORKFLOWS"
+  done 3<<< "$(images)"
 }
 
 step_image() {
@@ -286,7 +327,7 @@ step_image() {
   tools docker jq
   machine=$(docker version --format '{{.Server.Arch}}' 2> /dev/null || true)
   [ "$machine" = "$arch" ] || fail 2 "this runner's docker is ${machine:-not running}, not $arch: each image runs on its own architecture"
-  while read -r _ image <&3; do
+  while read -r image <&3; do
     read_index "$image@$digest"
     platform_digest "$arch"
     ref=$image@$platform
@@ -297,7 +338,7 @@ step_image() {
       2> "$IRONBEE_TMP/docker.err") || fail 1 "$ref did not run: $(tail -n 1 "$IRONBEE_TMP/docker.err")"
     [ "$reported" = "$version" ] || fail 1 "$ref's runner reports ${reported:-nothing}, not $version"
     say "$ref, linux/$arch, run with no network: its runner reports $version"
-  done 3<<< "$WORKFLOWS"
+  done 3<<< "$(images)"
 }
 
 step_signature() {
@@ -307,7 +348,7 @@ step_signature() {
   if [ -z "$prerelease" ] && [ ! -s "$KEY" ]; then
     fail 1 "$KEY is missing: a release's image verifies with IronBee's public key, committed at the repository's root"
   fi
-  while read -r _ image <&3; do
+  while read -r image <&3; do
     ref=$image@$digest
     if [ -s "$KEY" ] && cosign verify --key "$KEY" "$ref" > /dev/null 2> "$IRONBEE_TMP/cosign.err"; then
       say "$ref: its signature verifies with $KEY"
@@ -318,7 +359,7 @@ step_signature() {
       notice "$ref does not verify with $KEY: a pre-release signed for IronBee's own tests"
       result=tests
     fi
-  done 3<<< "$WORKFLOWS"
+  done 3<<< "$(images)"
   echo "signature=$result" >> "$GITHUB_OUTPUT"
 }
 
@@ -328,7 +369,7 @@ step_stamp() {
     n=$((n + 1))
     [ -f "$workflow" ] || fail 2 "$workflow is listed for the release and missing"
     stamp_file "$workflow" "$workflow" "$image" "$IRONBEE_TMP/stamped.$n"
-    say "stamped $workflow: $image@$digest (was $was_digest), IRONBEE_RUNNER_VERSION $version (was $was_version)"
+    say "stamped $workflow: $image@$digest (was $was_digest), IRONBEE_RUNNER_VERSION $version (was $was_version), tag $tag (was $was_tag)"
   done 3<<< "$WORKFLOWS"
   n=0
   while read -r workflow _ <&3; do
@@ -395,7 +436,7 @@ step_publish() {
   while read -r workflow _ <&3; do
     git add -- "$workflow"
   done 3<<< "$WORKFLOWS"
-  # The same image and version as main already names (a pre-release promoted as it is) stamp nothing: an empty commit.
+  # A pre-release promoted as it is (the image and version main already names) stamps the tag line alone.
   bot commit --quiet --allow-empty -m "chore(release): $tag"
   refs=("HEAD:refs/heads/main" "refs/tags/$tag")
   leases=()
@@ -434,14 +475,14 @@ notes() {
   if [ -n "$prerelease" ]; then
     printf '%s\n\n' "A pre-release of $version for IronBee's own tests, not for production."
   fi
-  while read -r _ image <&3; do
+  while read -r image <&3; do
     printf '%s\n\n' "Image: \`$image@$digest\`" "Platforms: ${PLATFORMS// /, }"
     if [ "$IRONBEE_SIGNATURE" = verified ]; then
       printf '%s\n\n' "Its signature verifies with cosign v3 and \`$KEY\` from this repository:" "    cosign verify --key $KEY $image@$digest"
     else
       printf '%s\n\n' "It was signed for IronBee's own tests: it does not verify with \`$KEY\` from this repository."
     fi
-  done 3<<< "$WORKFLOWS"
+  done 3<<< "$(images)"
 }
 
 step_github_release() {

@@ -1,7 +1,9 @@
 # Versions
 
 The workflow and the image it runs share one version, `MAJOR.MINOR.PATCH`. A release is tagged `v<version>`, and its
-workflow names its image by digest. What follows the `@` in your workflow file's `uses:` picks what you run:
+workflow names its image by digest. A release holds two workflow files, `code-review.yml` and
+`code-review-no-queue.yml` for a host whose Actions keep one waiting run ([Setup](setup.md#a-host-without-a-queue)):
+the same release, the same image. What follows the `@` in your workflow file's `uses:` picks what you run:
 
 | `uses: …/code-review.yml@` | What you run | When it changes |
 |---|---|---|

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from support import APP_SLUG, GROUP_HEAD, HEAD, JOB_LOGIN, JOB_TOKEN, ScriptTest, changed, event, marked
+from support import APP_SLUG, GROUP_HEAD, HEAD, JOB_LOGIN, JOB_TOKEN, SERVER, ScriptTest, changed, event, github, marked, on_host
 
 NOTHING: dict = {}
 
@@ -235,6 +235,12 @@ class IssueComment(Decide):
                 self.assertEqual(ran.code, 1)
                 self.assertEqual(ran.outputs, NOTHING)
                 self.assertIn("::error::", ran.out)
+
+    def test_on_a_server_the_reads_name_its_host(self):
+        self.state = github(SERVER)
+        ran = self.decide("issue_comment", self.comment, **on_host(SERVER))
+        self.assertEqual(ran.outputs, {"action": "respond", "pull-request": "7", "comment-id": "3101"}, ran.out + ran.err)
+        self.assertEqual({(c["host"], c["token"]) for c in ran.calls}, {(SERVER, JOB_TOKEN)})
 
     def test_a_refused_read_is_not_asked_again(self):
         self.state["fail"] = [{"method": "GET", "path": "repos/acme/widgets/pulls/7", "status": 403, "times": 1}]

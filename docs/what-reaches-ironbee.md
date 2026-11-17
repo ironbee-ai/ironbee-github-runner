@@ -19,7 +19,7 @@ repository's project itself when it has none, with no registration call.
 | Member | What it is |
 |---|---|
 | `repository.provider` | `github` |
-| `repository.path` | the repository's `owner/name` |
+| `repository.path` | the repository's `owner/name`; on a GHE.com tenant or a GitHub Enterprise Server, with the host before it: `acme.ghe.com:acme/shop` |
 | `runner.version` | the runner's version; a call made by hand may leave `runner` out |
 
 ## Start: `POST /v1/code-review-runs`
@@ -49,7 +49,7 @@ Made by a run before it clones or reads the change. Three kinds of run end befor
 | `head` | the commit id the run reviews |
 | `action` | `review`, `answer` (a question on one of the reviewer's threads), `respond` (words addressed to the reviewer in the conversation) or `retract` |
 | `trigger` | the CI: `github_actions` |
-| `developer` | the numeric GitHub account id of the pull request's author; `null` when the author is a bot |
+| `developer` | the numeric GitHub account id of the pull request's author, on the repository's host; `null` when the author is a bot |
 | `runner.version` | the runner's version |
 
 **The author's id.** IronBee uses it to count the distinct developers of a month against your licence's limit
