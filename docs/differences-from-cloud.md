@@ -13,7 +13,7 @@
 | A reply that turns a finding down | closed at the next review | the same |
 | A thread resolved by a person | the check is refreshed at once | recorded by the next review that reads the pull request again |
 | An answer that withdraws a finding | the check follows at once | the check follows at the next review, or when `@ironbee-ai review` restates it |
-| What the check means | the findings nobody who counts has turned down | the same; in either setup of this release it can also be forged by anyone who can push a branch ([what the check is worth](required-check.md#what-the-check-is-worth)) |
+| What the check means | the findings nobody who counts has turned down | the same |
 | A gate, or a refused run, on a new head | no status (a gate), or a neutral one | a `neutral` check |
 | A head whose check is an `action_required` and that holds no review of the reviewer's (nothing new was read there) | nothing is posted on that head | a short review with no inline comments is posted there first ([The short review](required-check.md#how-it-concludes)) |
 | A bot's push onto a person's pull request | starts nothing; the head has no status | reviewed, when the push raises a workflow run |
@@ -55,7 +55,7 @@
 | A fork's pull-request run has a read-only token and no secrets. | No review and no check can be written on a fork's pull request. A repository that takes them cannot make the check required in this release. |
 | Workflows do not run on a pull request with a merge conflict. | A push onto a conflicted pull request gets no review and no check until the conflict is gone. |
 | No workflow event is raised when a review thread is resolved. | It is recorded by the next review that reads the pull request again. |
-| An inline reply's event runs the pull request's own workflow file; a conversation comment's runs the default branch's. | A change to the workflow file on a pull request's branch applies to that pull request's own events and inline replies, and to its conversation comments only once it is on the default branch. It is also why anyone who can push a branch can change what the workflow does there ([what the check is worth](required-check.md#what-the-check-is-worth)). |
+| An inline reply's event runs the pull request's own workflow file; a conversation comment's runs the default branch's. | A change to the workflow file on a pull request's branch applies to that pull request's own events and inline replies, and to its conversation comments only once it is on the default branch. |
 | A workflow required by an organization ruleset runs for pull-request and merge-group events only. | It cannot carry the two comment events, so the workflow stays a file of the repository. |
 | A check belongs to a commit, and a change of a pull request's base raises no event the workflow listens to. | A head reviewed in one pull request, or against one base, keeps its check in another. |
 | A push made with a workflow's own token, or whose commit asks to skip CI, raises no workflow event. | That head gets no run of its own. A run already waiting reviews it, since a run reads the head when it starts; otherwise it has no review and no check until the next push or a command. |

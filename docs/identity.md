@@ -20,8 +20,7 @@ App ([Setup](setup.md#resolving-threads)).
 
 The job token's identity is `github-actions[bot]`, which nobody would address, so under it the reviewer answers to
 `@ironbee-ai` alone: `@github-actions` is never a command. Other workflows also write as `github-actions[bot]`. The
-reviewer tells its own texts by its marker beside the author, and looks only at check runs of its own identity;
-[The `Code Review Result` check](required-check.md#what-the-check-is-worth) says what that is worth.
+reviewer tells its own texts by its marker beside the author, and looks only at check runs of its own identity.
 
 ## Your own GitHub App
 
@@ -58,8 +57,7 @@ error.
 
 What changes under your own App:
 
-- Comments and the check are your App's, out of the identity every other workflow shares. The App's key is still a
-  secret that a workflow on a branch can read ([what the check is worth](required-check.md#what-the-check-is-worth)).
+- Comments and the check are your App's, out of the identity every other workflow shares.
 - People mention the App, which is a real GitHub mention.
 - The App's own replies raise events as a person's do. The workflow ends every event whose comment a bot wrote, so
   the reviewer never starts itself.

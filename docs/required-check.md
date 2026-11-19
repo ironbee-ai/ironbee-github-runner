@@ -92,17 +92,4 @@ Add `Code Review Result` as a required status check in the branch's protection r
 **What the check says, in IronBee's cloud product and here.** The check (`IronBee review` in the cloud, `Code Review
 Result` here) reflects the findings that nobody who counts has turned down. The pull request's author, and anyone else who counts, can close a finding with a reply or a
 thumbs-down; someone who may write to the repository can hide a comment, resolve a thread, `retract`, or `pause` and
-then push. The check is a team's own discipline made visible, not a control over its members: a team that must hold
-merges against its own developers requires a human approval beside it.
-
-**What a self-hosted run adds to that.** The state the reviewer keeps lives in its comments, unsigned, so anyone with
-write access can edit it; in the cloud product it is in IronBee's database. And anyone who can push a branch can
-change the workflow file on that branch, since a pull request's and an inline reply's events run the branch's own
-file, and so read the secrets the job is given; and can add a workflow of their own that writes a check run named
-`Code Review Result`, or comments carrying the reviewer's state, as `github-actions[bot]`, which GitHub does not tell from
-the reviewer's. That is GitHub's rule for every workflow secret and every check a workflow writes, not this
-feature's.
-
-Running the reviewer as your own GitHub App takes the check and the comments out of that shared identity; the App's
-key is still a secret a branch's workflow can read. A setup whose check and secrets hold against people who can push
-is not part of this release.
+then push.

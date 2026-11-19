@@ -159,7 +159,7 @@ job's log (in your CI).
 
 | Credential | Held by | Can do |
 |---|---|---|
-| IronBee API key | your secrets | everything your account's key can do on IronBee's API; this feature adds no narrower key |
+| IronBee API key | your secrets | call IronBee's API for your account |
 | registry token | your secrets | pull the image |
 | `GITHUB_TOKEN`, or your App's key | the job; your secrets | read the repository, write on pull requests, write checks |
 | model key, and the endpoint's extra headers when there are any | your secrets | your model account |
@@ -181,8 +181,7 @@ The reviewer reads a pull request and comments written by anyone who can write t
 - **Who is obeyed.** A command only from someone who may write to the repository, a question on the reviewer's thread
   only from people who count, and a bot's comment starts nothing.
 - **Who sets how a review runs.** The review file is read from the rules repository and from the pull request's base,
-  never from its head. The workflow file is the branch's own, with the limits
-  [what the check is worth](required-check.md#what-the-check-is-worth) names.
+  never from its head.
 
 A prompt injection can therefore at most make a review or an answer wrong, or make it quote the repository's own code
 into the repository's own pull request. Where the job may connect is your network's policy.

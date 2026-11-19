@@ -8,8 +8,7 @@ From IronBee:
 
 - **The self-hosted runner enabled on your IronBee account.** Its licence has an end date and a developer limit
   ([The licence](licence.md)).
-- **Your account's API key.** IronBee's API takes it in `X-API-Key`. It is your account's key: it can do on IronBee's
-  API everything that key can do, and this feature adds no narrower one.
+- **Your account's API key.** IronBee's API takes it in `X-API-Key`.
 - **A registry token.** The runner's image is in a private repository on Docker Hub, and IronBee gives each customer a
   read-only token for it. Being able to pull the image entitles you to nothing by itself: every run still asks IronBee
   whether it may run.
@@ -346,10 +345,8 @@ requests and their runs, built from the counts IronBee is sent: no title, author
 
 Optional. Add `Code Review Result` as a required status check of the branch. A gate, a licence problem or a run that could
 not start leaves a `neutral` check, which passes, so it never blocks a merge; open findings at or above the team's
-`mergeBlock` level do. Before you rely on it, read
-[what the check is worth](required-check.md#what-the-check-is-worth): the check is a team's own discipline made
-visible, not a control over its members, and in this release anyone who can push a branch can forge it. The same page
-covers the merge queue, forks and Dependabot.
+`mergeBlock` level do. [Making it required](required-check.md#making-it-required) covers the merge queue, forks and
+Dependabot.
 
 ## On a pull request
 
@@ -404,9 +401,6 @@ On GitHub's own runners or on your self-hosted ones.
 - **Rootless Docker** works: the container then runs as its own root, which is the runner's user on the machine.
   **Docker with `userns-remap`** is not supported: the container's users could not write the step's outputs file, so
   the review step fails at once, naming it, before it pulls anything.
-- **On a public repository,** a fork's pull request runs its own copy of the workflow file on the runner that file
-  names, so use a self-hosted runner only on private repositories, or require approval before workflows from forks
-  run.
 
 What the runner connects to: GitHub, your model's endpoint and IronBee's API (`api.service.ironbee.ai`, or the
 address in `ironbee-api-url`), and nothing else; with your Jev key, also Jev's endpoint ([Jev](jev.md)). The image is
@@ -570,4 +564,4 @@ and says when a file that calls the workflow without a queue lacks `actions: wri
 - [Identity](identity.md): run the reviewer as your own GitHub App instead of the job token.
 - [The review file](review-file.md): adjust each task's model and effort, and a closed list of settings.
 - [Settings and rules](settings-and-rules.md): keep rules for all your repositories in a repository of your own.
-- [The `Code Review Result` check](required-check.md): make it required, and know what it is worth.
+- [The `Code Review Result` check](required-check.md): how it concludes, and how to make it required.
