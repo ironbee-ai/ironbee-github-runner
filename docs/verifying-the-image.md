@@ -4,9 +4,9 @@ Each release's image is signed with a key IronBee holds. The signature is kept i
 the image's bill of materials (SPDX). IronBee's public key is in this repository. A release of the workflow names its
 image by digest, and its tag is never moved, so the digest you verify is the one your workflow runs.
 
-> **The public key.** IronBee's public key is published in this repository as `ironbee-image-signing.pem`
-> <!-- PLACEHOLDER: the key's file name and path in this repository are filled in when the key is published. -->
-> with the first release. The commands below expect it saved under that name in the current directory.
+> **The public key.** IronBee's public key is published in this repository as
+> [`ironbee-image-signing.pem`](../ironbee-image-signing.pem), at its root. The commands below expect it saved under
+> that name in the current directory.
 
 ## What you need
 
