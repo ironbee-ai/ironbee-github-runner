@@ -4,7 +4,7 @@ Your code is read in your own job, and your model is called from it. IronBee is 
 the run starts and when it ends, and once more when a repository is registered. Each call carries ids, fixed codes,
 counts and the names of the models the run called. This page prints the three bodies in full.
 
-Every call carries your API key in `X-API-Key`, and the runner's version in `User-Agent` (`ironbee-runner/1.0.0`).
+Every call carries your API key in `X-API-Key`, and the runner's version in `User-Agent` (`ironbee-runner/1.1.0`).
 
 ## Registration: `PUT /v1/code-review-repositories`
 
@@ -13,7 +13,7 @@ repository's project itself when it has none, with no registration call.
 
 ```json
 { "repository": { "provider": "github", "path": "acme/shop" },
-  "runner": { "version": "1.0.0" } }
+  "runner": { "version": "1.1.0" } }
 ```
 
 | Member | What it is |
@@ -39,7 +39,7 @@ Made by a run before it clones or reads the change. Three kinds of run end befor
   "action": "review",
   "trigger": "github_actions",
   "developer": 5550123,
-  "runner": { "version": "1.0.0" } }
+  "runner": { "version": "1.1.0" } }
 ```
 
 | Member | What it is |
@@ -72,7 +72,7 @@ Made at the end of every run that started. The body is checked against its schem
   "round": 2,
   "read": "delta",
   "depth": "standard",
-  "profile": "ironbee-self-hosted-standard",
+  "profile": "self-hosted-standard",
   "customized": false,
   "classifier": "llm",
   "size": { "class": "M", "reviewableLines": 870, "files": 14 },
@@ -95,7 +95,7 @@ Made at the end of every run that started. The body is checked against its schem
 | `round` | the review's round on the pull request |
 | `read` | what a review read: `whole`, `delta` (what changed since the last round) or `nothing`; `null` when no review ran |
 | `depth` | `quick`, `standard` or `deep` |
-| `profile` | the profile the run used: `ironbee-self-hosted-quick`, `-standard` or `-deep` |
+| `profile` | the profile the run used: `self-hosted-quick`, `-standard` or `-deep` |
 | `customized` | whether a value of your [review file](review-file.md) was applied |
 | `classifier` | `llm` (your model answered the classifier's questions) or `jev` ([Jev](jev.md)) |
 | `size` | the size class (`S` to `XXXL`), the reviewable line count, and the file count |
@@ -115,7 +115,7 @@ With the input `ironbee-run-reports: false`, a run's start sends only this, and 
 ```json
 { "repository": { "provider": "github", "path": "acme/shop" },
   "developer": 5550123,
-  "runner": { "version": "1.0.0" },
+  "runner": { "version": "1.1.0" },
   "reports": false }
 ```
 

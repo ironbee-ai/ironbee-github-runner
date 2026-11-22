@@ -18,7 +18,7 @@ A healthy review's log reads like this:
 ```
 pull request acme/shop#412 at 9f2c4e1 (pull_request, new_commits)
 size M (870 reviewable lines in 14 files): a standard review
-profile ironbee-self-hosted-standard, classifier llm
+profile self-hosted-standard, classifier llm
 check: success on 9f2c4e1
 ```
 
@@ -36,6 +36,7 @@ nothing.
 | IronBee's reviews are suspended for this account; contact IronBee. | `SELF_HOSTED_RUNNER_SUSPENDED` | contact IronBee ([The licence](licence.md#suspension)) |
 | The licence for IronBee's self-hosted review has ended; contact IronBee to renew it. | `SELF_HOSTED_RUNNER_LICENCE_ENDED` | renew the licence; IronBee moves the end date, and the next event is reviewed ([The licence](licence.md)) |
 | This version of the IronBee runner is no longer served; move the workflow to `<version>`. | `RUNNER_VERSION_UNSUPPORTED` | move the workflow to that version ([Versions](versions.md)). A release stopped at once adds ` Reason: <reason>` |
+| Code review is turned off for this account in IronBee; turn it on in the console's code review settings before the runner reviews. | `CODE_REVIEW_DISABLED` | turn the account's code review on in the console's code review settings; the next event is reviewed |
 | IronBee's cloud reviews this repository; turn its code review off in the console before the runner reviews it. | `REPOSITORY_REVIEWED_BY_CLOUD` | turn the repository's code review off in the console, or remove the workflow |
 | Missing or invalid credentials | `UNAUTHORIZED` | the `ironbee-api-key` secret is wrong, or a rotated key past its grace period. A code the runner does not know is shown with IronBee's own text, as here |
 | IronBee could not be reached, so this pull request was not reviewed. | — | the job is red. Check that the job can reach IronBee's API (`api.service.ironbee.ai`, or the address in `ironbee-api-url`), then re-run the workflow |

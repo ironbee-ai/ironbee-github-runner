@@ -138,7 +138,7 @@ permissions:
 jobs:
   code-review:
     name: Code Review
-    uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
+    uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.1.0
     with:
       model-provider: anthropic
       # model-name: one model for every task; required for `openai` with `model-url`
@@ -164,7 +164,7 @@ What each part does:
   `checks: write` for the `Code Review Result` check, and `issues: read` for the issues a pull request links. Once a
   workflow sets `permissions`, a scope it does not list is none. Resolving threads needs one more
   ([Resolving threads](#resolving-threads)).
-- **The version.** `@v1.0.0` names an exact release. Its tag is never moved, and the release names its image by
+- **The version.** `@v1.1.0` names an exact release. Its tag is never moved, and the release names its image by
   digest. To rely on more than a tag, pin the workflow's commit in its place, and with it the image
   ([Versions](versions.md)).
 - **The inputs and secrets.** Listed below. `model-provider` is required. `ironbee-api-key` and `registry-token` are
@@ -298,7 +298,7 @@ The answer:
 ```
 
 `created` is `false` when the project was already there. The runner adds its version to the call
-(`"runner": {"version": "1.0.0"}`); a call made by hand may leave it out.
+(`"runner": {"version": "1.1.0"}`); a call made by hand may leave it out.
 
 On a GitHub Enterprise host the path carries the host: `"path": "ghes.acme.com:acme/shop"` on a server,
 `"acme.ghe.com:acme/shop"` on a GHE.com tenant, as the runner sends it. A bare `acme/shop` names github.com's
@@ -306,7 +306,8 @@ repository, a different project. `scripts/register.sh` run by hand adds the host
 
 The call is refused, and nothing changes, when the self-hosted runner is not enabled on the account
 (`SELF_HOSTED_RUNNER_NOT_ENABLED`), when the account is suspended (`SELF_HOSTED_RUNNER_SUSPENDED`), when the licence
-has ended (`SELF_HOSTED_RUNNER_LICENCE_ENDED`), when IronBee's cloud product already reviews the repository
+has ended (`SELF_HOSTED_RUNNER_LICENCE_ENDED`), when the account's code review is turned off in the console
+(`CODE_REVIEW_DISABLED`), when IronBee's cloud product already reviews the repository
 (`REPOSITORY_REVIEWED_BY_CLOUD`), and, from the register step, when its runner version is no longer served
 (`RUNNER_VERSION_UNSUPPORTED`). The register step then fails with the reason, so a wrong setup is found on the day of
 the install. A repository the register step could not register is registered by its first run.
@@ -446,7 +447,7 @@ organizations hold. On github.com a copy is what an enterprise keeps when it all
   mirror it (`git clone --mirror https://github.com/ironbee-ai/ironbee-github-runner.git`, then `git push --mirror` to
   your copy). To move to a later release, copy again, then move the tag in `uses:`.
 - **Call it** in place of `ironbee-ai/ironbee-github-runner`, at a release: `uses:
-  <owner>/<name>/.github/workflows/<file>@v1.0.0`. On a server, name it again in `runner-repository`: a server's jobs
+  <owner>/<name>/.github/workflows/<file>@v1.1.0`. On a server, name it again in `runner-repository`: a server's jobs
   do not name their workflow's repository, and the first step fails, naming the input, when neither names it.
 - **Who may call it.** A public copy serves every repository. An internal copy serves the enterprise's private and
   internal repositories once its Actions access setting allows them (**Settings → Actions → General → Access**:
@@ -460,7 +461,7 @@ organizations hold. On github.com a copy is what an enterprise keeps when it all
   as well (**Configure SSO** beside the token), or GitHub answers the scripts' fetch with 403.
 
 ```yaml
-    uses: acme/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
+    uses: acme/ironbee-github-runner/.github/workflows/code-review.yml@v1.1.0
     with:
       model-provider: anthropic
     secrets:
@@ -497,7 +498,7 @@ organizations hold. On github.com a copy is what an enterprise keeps when it all
 jobs:
   code-review:
     name: Code Review
-    uses: acme/ironbee-github-runner/.github/workflows/code-review-no-queue.yml@v1.0.0
+    uses: acme/ironbee-github-runner/.github/workflows/code-review-no-queue.yml@v1.1.0
     with:
       model-provider: anthropic
       runner-repository: acme/ironbee-github-runner

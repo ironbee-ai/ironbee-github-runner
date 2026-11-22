@@ -56,7 +56,7 @@ for the image. From your side: a key for your model.
    jobs:
      code-review:
        name: Code Review
-       uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
+       uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.1.0
        with:
          model-provider: anthropic
        secrets:
@@ -95,6 +95,6 @@ The [setup guide](docs/setup.md) explains each step and every input.
 
 ## Versions
 
-Pin an exact release, as above (`@v1.0.0`), or follow the newest 1.x release with `@v1`. A release's tag is never
+Pin an exact release, as above (`@v1.1.0`), or follow the newest 1.x release with `@v1`. A release's tag is never
 moved, and it names its image by digest. Within a major version, inputs and secrets keep their names.
-[Versions](docs/versions.md) explains the rest.
+[Versions](docs/versions.md) explains the rest, and [CHANGELOG.md](CHANGELOG.md) says what each release changed.

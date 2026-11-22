@@ -7,7 +7,7 @@ the same release, the same image. What follows the `@` in your workflow file's `
 
 | `uses: …/code-review.yml@` | What you run | When it changes |
 |---|---|---|
-| `v1.0.0` | that release | never: a release's tag is never moved |
+| `v1.1.0` | that release | never: a release's tag is never moved |
 | `v1` | the newest release of major version 1 | at each release of 1.x, with nothing to change on your side, since within a major version nothing you set is renamed or removed |
 | `<commit id of a release>` | that release, without relying on a tag's word | never: the commit names the image by digest too |
 
@@ -44,9 +44,9 @@ The release notes say what a customer must change, the [model table](supported-m
 
 ## Moving to another release
 
-Change the tag (or the commit) in `uses:`, after reading the release notes of every release in between. You may move
-in the middle of a pull request: a later release reads the state an earlier one wrote in the pull request's comments,
-and the rounds go on.
+Change the tag (or the commit) in `uses:`, after reading the release notes of every release in between
+([CHANGELOG.md](../CHANGELOG.md)). You may move in the middle of a pull request: a later release reads the state an
+earlier one wrote in the pull request's comments, and the rounds go on.
 
 Moving back across a change of that state's format (which only a major release makes) leaves the pull requests the
 newer release wrote unreviewed until you move forward again. Such a run writes nothing on the pull request, ends as
@@ -66,7 +66,7 @@ fixed yet.
   the day and the version:
 
   ```
-  warning: runner 1.0.0 is served until 2028-06-30; move the workflow to 2.0.0 before then
+  warning: runner 1.1.0 is served until 2028-06-30; move the workflow to 2.0.0 before then
   ```
 
   The run goes on as before.
@@ -84,3 +84,7 @@ fixed yet.
 **The one exception** is a release that must not run at all, for a fault that would harm its users. That version alone
 is stopped at once: its refusal carries the reason, which the runner prints in the job's log and states in its
 `neutral` check, and its customers are told directly. The other versions inside their time go on.
+
+**1.0.0 is no longer served**, the one version stopped outside these rules. Release 1.1.0 renamed the profiles a run
+reports, which 1.0.0 cannot follow, so 1.0.0 stopped inside major version 1 and without a dated notice. Its runs and
+registrations are refused (`RUNNER_VERSION_UNSUPPORTED`) and told to move the workflow to 1.1.0.

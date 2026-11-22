@@ -343,6 +343,7 @@ class Stamp(Release):
         text = (ROOT / WORKFLOW).read_text()
         image = next(line for line in text.splitlines() if f"IRONBEE_IMAGE: {IMAGE}@" in line)
         version = next(line for line in text.splitlines() if "IRONBEE_RUNNER_VERSION:" in line)
+        held = re.search(r"IRONBEE_RUNNER_VERSION: (\S+)", version).group(1)
         tag = tag_line(text)
         variants = {"the image twice": (text.replace(image, image + "\n" + image), "the image line naming"),
                     "no image": (text.replace(image, ""), "the image line naming"),
@@ -350,7 +351,7 @@ class Stamp(Release):
                     "the image under both keys": (text.replace(image, image + "\n" + image.replace("IRONBEE_IMAGE:", "image:")), "the image line naming"),
                     "a short digest": (text.replace(image, image[:-1]), "the image line naming"),
                     "the version twice": (text.replace(version, version + "\n" + version), "IRONBEE_RUNNER_VERSION line"),
-                    "the version quoted": (text.replace(version, version.replace(": 1.0.0", ': "1.0.0"')), "IRONBEE_RUNNER_VERSION line"),
+                    "the version quoted": (text.replace(version, version.replace(f": {held}", f': "{held}"')), "IRONBEE_RUNNER_VERSION line"),
                     "the tag twice": (text.replace(tag, tag + "\n" + tag), "the scripts' tag line"),
                     "no tag": (text.replace(tag, "          ref: ${{ job.workflow_sha }}"), "the scripts' tag line"),
                     "the tag not a tag": (text.replace(tag, tag.replace("|| 'v", "|| '")), "the scripts' tag line")}

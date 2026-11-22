@@ -35,7 +35,7 @@ reviewer tells its own texts by its marker beside the author, and looks only at 
    jobs:
      code-review:
        name: Code Review
-       uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.0.0
+       uses: ironbee-ai/ironbee-github-runner/.github/workflows/code-review.yml@v1.1.0
        with:
          model-provider: anthropic
          app-slug: acme-review           # your App's slug: the name people call it by
