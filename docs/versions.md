@@ -7,7 +7,7 @@ the same release, the same image. What follows the `@` in your workflow file's `
 
 | `uses: …/code-review.yml@` | What you run | When it changes |
 |---|---|---|
-| `v1.0.0` | that release | never: a release's tag is never moved |
+| `v1.1.0` | that release | never: a release's tag is never moved |
 | `v1` | the newest release of major version 1 | at each release of 1.x, with nothing to change on your side, since within a major version nothing you set is renamed or removed |
 | `<commit id of a release>` | that release, without relying on a tag's word | never: the commit names the image by digest too |
 

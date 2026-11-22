@@ -22,7 +22,7 @@ permissions:
 jobs:
   code-review:
     name: Code Review
-    uses: acme/ironbee-github-runner/.github/workflows/code-review-no-queue.yml@v1.0.0
+    uses: acme/ironbee-github-runner/.github/workflows/code-review-no-queue.yml@v1.1.0
     with:
       model-provider: anthropic
       runner-repository: acme/ironbee-github-runner      # the copy named in `uses:`
