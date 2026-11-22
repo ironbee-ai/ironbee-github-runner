@@ -181,7 +181,7 @@ jobs:
       cancel-in-progress: false
     # The release's image, by the digest the release writes here: the version the register step sends.
     env:
-      IRONBEE_IMAGE: docker.io/ironbeeai/ironbee-code-review-runner@sha256:39da641e94d0f286bfa6de3b58605d35b21fca882208ead75c694f09ac5e7c1a
+      IRONBEE_IMAGE: docker.io/ironbeeai/ironbee-code-review-runner@sha256:df42a6f33736ffab3ff3cb1d4faa2eb5e2a5b335c72ace5a69e38d5fb389c05d
     steps:
       # A job that names no workflow repository would otherwise fetch the calling repository's own `scripts`.
       - name: The workflow's repository
@@ -198,7 +198,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ job.workflow_repository || inputs.runner-repository }}
-          ref: ${{ job.workflow_sha || 'v1.1.0-rc.1' }}         # the release's tag, where the job names no commit
+          ref: ${{ job.workflow_sha || 'v1.1.0-rc.2' }}         # the release's tag, where the job names no commit
           token: ${{ secrets.runner-token || github.token }}
           path: .ironbee-github-runner
           sparse-checkout: scripts
