@@ -97,4 +97,4 @@ The [setup guide](docs/setup.md) explains each step and every input.
 
 Pin an exact release, as above (`@v1.0.0`), or follow the newest 1.x release with `@v1`. A release's tag is never
 moved, and it names its image by digest. Within a major version, inputs and secrets keep their names.
-[Versions](docs/versions.md) explains the rest.
+[Versions](docs/versions.md) explains the rest, and [CHANGELOG.md](CHANGELOG.md) says what each release changed.

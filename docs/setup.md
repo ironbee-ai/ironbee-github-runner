@@ -298,7 +298,7 @@ The answer:
 ```
 
 `created` is `false` when the project was already there. The runner adds its version to the call
-(`"runner": {"version": "1.0.0"}`); a call made by hand may leave it out.
+(`"runner": {"version": "1.1.0"}`); a call made by hand may leave it out.
 
 On a GitHub Enterprise host the path carries the host: `"path": "ghes.acme.com:acme/shop"` on a server,
 `"acme.ghe.com:acme/shop"` on a GHE.com tenant, as the runner sends it. A bare `acme/shop` names github.com's
@@ -306,7 +306,8 @@ repository, a different project. `scripts/register.sh` run by hand adds the host
 
 The call is refused, and nothing changes, when the self-hosted runner is not enabled on the account
 (`SELF_HOSTED_RUNNER_NOT_ENABLED`), when the account is suspended (`SELF_HOSTED_RUNNER_SUSPENDED`), when the licence
-has ended (`SELF_HOSTED_RUNNER_LICENCE_ENDED`), when IronBee's cloud product already reviews the repository
+has ended (`SELF_HOSTED_RUNNER_LICENCE_ENDED`), when the account's code review is turned off in the console
+(`CODE_REVIEW_DISABLED`), when IronBee's cloud product already reviews the repository
 (`REPOSITORY_REVIEWED_BY_CLOUD`), and, from the register step, when its runner version is no longer served
 (`RUNNER_VERSION_UNSUPPORTED`). The register step then fails with the reason, so a wrong setup is found on the day of
 the install. A repository the register step could not register is registered by its first run.

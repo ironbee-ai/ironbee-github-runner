@@ -25,7 +25,7 @@ Without it, your model answers them. The run reports which one answered (`classi
 
 ## What changes
 
-The profile is the same either way, `ironbee-self-hosted-<depth>`. What depends on the classifier is a small set of
+The profile is the same either way, `self-hosted-<depth>`. What depends on the classifier is a small set of
 values the profile holds for each: the routing's bars and the material bar, two questions asked of Jev and not of your
 model, and how many times the deep profile's priority score is asked. With Jev, each profile resolves to the same
 settings as IronBee's cloud product at that depth.
