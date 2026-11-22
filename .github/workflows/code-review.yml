@@ -190,7 +190,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ job.workflow_repository || inputs.runner-repository }}
-          ref: ${{ job.workflow_sha || 'v1.1.0-rc.2' }}         # the release's tag, where the job names no commit
+          ref: ${{ job.workflow_sha || 'v1.1.0' }}              # the release's tag, where the job names no commit
           token: ${{ secrets.runner-token || github.token }}
           path: .ironbee-github-runner
           sparse-checkout: scripts
