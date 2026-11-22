@@ -85,6 +85,6 @@ fixed yet.
 is stopped at once: its refusal carries the reason, which the runner prints in the job's log and states in its
 `neutral` check, and its customers are told directly. The other versions inside their time go on.
 
-**1.0.0 is no longer served.** Release 1.1.0 renamed the profiles a run reports, which 1.0.0 cannot follow, so 1.0.0
-stopped inside major version 1 and without a dated notice. Its runs and registrations are refused
-(`RUNNER_VERSION_UNSUPPORTED`) and told to move the workflow to 1.1.0.
+**1.0.0 is no longer served**, the one version stopped outside these rules. Release 1.1.0 renamed the profiles a run
+reports, which 1.0.0 cannot follow, so 1.0.0 stopped inside major version 1 and without a dated notice. Its runs and
+registrations are refused (`RUNNER_VERSION_UNSUPPORTED`) and told to move the workflow to 1.1.0.
